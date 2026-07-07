@@ -69,11 +69,11 @@ namespace Origuma.EasyShaderCore.Editor
                 _cacheFlow = ComputeFlow(m, s);
                 _cacheMesh = m;
             }
-            int n = _cacheFlow.Length;
+            var n = _cacheFlow.Length;
             var outc = new float[n];
-            for (int i = 0; i < n; i++)
+            for (var i = 0; i < n; i++)
             {
-                float raw = comp == 0 ? _cacheFlow[i].x : (comp == 1 ? _cacheFlow[i].y : _cacheFlow[i].z);
+                var raw = comp == 0 ? _cacheFlow[i].x : (comp == 1 ? _cacheFlow[i].y : _cacheFlow[i].z);
                 // cos2θ/sin2θ は 0.5 中心エンコード、信頼度は 0..1 そのまま。
                 outc[i] = comp == 2 ? Mathf.Clamp01(raw) : 0.5f + 0.5f * raw;
             }
@@ -82,27 +82,27 @@ namespace Origuma.EasyShaderCore.Editor
 
         private static Vector3[] ComputeFlow(Mesh mesh, Settings s)
         {
-            Vector3[] verts = mesh.vertices;
-            Vector3[] norms = mesh.normals;
-            Vector4[] tans  = mesh.tangents;
-            int n = verts.Length;
+            var verts = mesh.vertices;
+            var norms = mesh.normals;
+            var tans  = mesh.tangents;
+            var n = verts.Length;
             var result = new Vector3[n];
 
-            bool hasTan = tans != null && tans.Length == n && norms.Length == n;
+            var hasTan = tans != null && tans.Length == n && norms.Length == n;
             if (!hasTan)
             {
                 Debug.LogWarning($"[EasyPBR Baker] '{mesh.name}' にタンジェント/法線が無いため Hair Flow は無効(識別)で焼かれます。" +
                                  "インポート設定で Calculate Tangents を有効化してください。");
-                for (int i = 0; i < n; i++) result[i] = new Vector3(1f, 0f, 0f); // cos2θ=1,sin2θ=0,conf=0
+                for (var i = 0; i < n; i++) result[i] = new Vector3(1f, 0f, 0f); // cos2θ=1,sin2θ=0,conf=0
                 return result;
             }
 
             // 各頂点の接線平面基底（ランタイムの TBN と同じ取り方：B = N × T * w）。
             var T = new Vector3[n];
             var B = new Vector3[n];
-            for (int i = 0; i < n; i++)
+            for (var i = 0; i < n; i++)
             {
-                Vector3 t = new Vector3(tans[i].x, tans[i].y, tans[i].z).normalized;
+                var t = new Vector3(tans[i].x, tans[i].y, tans[i].z).normalized;
                 T[i] = t;
                 B[i] = Vector3.Cross(norms[i].normalized, t) * tans[i].w;
             }
@@ -111,8 +111,8 @@ namespace Origuma.EasyShaderCore.Editor
             var aa = new float[n];
             var bb = new float[n];
             var cc = new float[n];
-            int[] tris = mesh.triangles;
-            for (int k = 0; k < tris.Length; k += 3)
+            var tris = mesh.triangles;
+            for (var k = 0; k < tris.Length; k += 3)
             {
                 int a = tris[k], b = tris[k + 1], c = tris[k + 2];
                 Accum(a, b, verts, norms, T, B, s.useCurvature, aa, bb, cc);
@@ -123,16 +123,16 @@ namespace Origuma.EasyShaderCore.Editor
                 Accum(c, b, verts, norms, T, B, s.useCurvature, aa, bb, cc);
             }
 
-            for (int i = 0; i < n; i++)
+            for (var i = 0; i < n; i++)
             {
-                float diff = aa[i] - cc[i];
-                float off  = 2f * bb[i];
-                float D     = Mathf.Sqrt(diff * diff + off * off);
-                float trace = aa[i] + cc[i];
+                var diff = aa[i] - cc[i];
+                var off  = 2f * bb[i];
+                var D     = Mathf.Sqrt(diff * diff + off * off);
+                var trace = aa[i] + cc[i];
 
-                float cos2 = D > 1e-12f ? diff / D : 1f;   // 等方なら識別(1,0)
-                float sin2 = D > 1e-12f ? off  / D : 0f;
-                float conf = trace > 1e-12f ? Mathf.Clamp01(D / trace) : 0f; // (λ1-λ2)/(λ1+λ2)
+                var cos2 = D > 1e-12f ? diff / D : 1f;   // 等方なら識別(1,0)
+                var sin2 = D > 1e-12f ? off  / D : 0f;
+                var conf = trace > 1e-12f ? Mathf.Clamp01(D / trace) : 0f; // (λ1-λ2)/(λ1+λ2)
 
                 result[i] = new Vector3(cos2, sin2, conf);
             }
@@ -144,17 +144,17 @@ namespace Origuma.EasyShaderCore.Editor
                                   Vector3[] T, Vector3[] B, bool curvature,
                                   float[] aa, float[] bb, float[] cc)
         {
-            Vector3 e = verts[j] - verts[i];
-            float eT = Vector3.Dot(e, T[i]);
-            float eB = Vector3.Dot(e, B[i]);
-            float l2 = eT * eT + eB * eB;
+            var e = verts[j] - verts[i];
+            var eT = Vector3.Dot(e, T[i]);
+            var eB = Vector3.Dot(e, B[i]);
+            var l2 = eT * eT + eB * eB;
             if (l2 < 1e-12f) return;
 
             float w;
             if (curvature)
             {
                 // 法線変化が小さい方向ほど重い＝毛流れに沿う。方向は正規化して扱う。
-                float invLen = 1f / Mathf.Sqrt(l2);
+                var invLen = 1f / Mathf.Sqrt(l2);
                 eT *= invLen; eB *= invLen;
                 w = 1f / (1e-3f + (norms[j] - norms[i]).magnitude);
             }

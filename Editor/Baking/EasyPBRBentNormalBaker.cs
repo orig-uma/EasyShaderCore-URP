@@ -58,11 +58,11 @@ namespace Origuma.EasyShaderCore.Editor
                 _cacheBent = ComputeBentNormals(r.transform, m, s);
                 _cacheMesh = m;
             }
-            int n = _cacheBent.Length;
+            var n = _cacheBent.Length;
             var outc = new float[n];
-            for (int i = 0; i < n; i++)
+            for (var i = 0; i < n; i++)
             {
-                float raw = comp == 0 ? _cacheBent[i].x
+                var raw = comp == 0 ? _cacheBent[i].x
                           : comp == 1 ? _cacheBent[i].y
                           : comp == 2 ? _cacheBent[i].z
                           :             _cacheBent[i].w;
@@ -74,34 +74,34 @@ namespace Origuma.EasyShaderCore.Editor
 
         private static Vector4[] ComputeBentNormals(Transform xf, Mesh mesh, Settings s)
         {
-            Vector3[] verts = mesh.vertices;
-            Vector3[] norms = mesh.normals;
-            Vector4[] tans  = mesh.tangents;
-            int n = verts.Length;
+            var verts = mesh.vertices;
+            var norms = mesh.normals;
+            var tans  = mesh.tangents;
+            var n = verts.Length;
             var result = new Vector4[n];
-            int mask = 1 << EasyPbrBakeCore.BakeLayer;
-            Vector3[] hemi = EasyPbrBakeCore.BuildHemisphere(s.rayCount);
+            var mask = 1 << EasyPbrBakeCore.BakeLayer;
+            var hemi = EasyPbrBakeCore.BuildHemisphere(s.rayCount);
 
-            bool hasTan = tans != null && tans.Length == n;
+            var hasTan = tans != null && tans.Length == n;
             if (!hasTan)
                 Debug.LogWarning($"[EasyPBR Baker] '{mesh.name}' にタンジェントが無いため Bent Normal はフラット(無効)で焼かれます。" +
                                  "インポート設定で Calculate Tangents を有効化するか、UV を用意してください。");
 
-            for (int i = 0; i < n; i++)
+            for (var i = 0; i < n; i++)
             {
-                Vector3 nLocal   = norms.Length == n ? norms[i] : Vector3.up;
-                Vector3 originWS = xf.TransformPoint(verts[i]);
-                Vector3 normalWS = xf.TransformDirection(nLocal).normalized;
-                Vector3 bias     = normalWS * 1e-3f;
-                EasyPbrBakeCore.Basis(normalWS, out Vector3 t, out Vector3 b);
+                var nLocal   = norms.Length == n ? norms[i] : Vector3.up;
+                var originWS = xf.TransformPoint(verts[i]);
+                var normalWS = xf.TransformDirection(nLocal).normalized;
+                var bias     = normalWS * 1e-3f;
+                EasyPbrBakeCore.Basis(normalWS, out var t, out var b);
 
                 // 遮蔽されなかったレイ方向だけ平均 → 開いている方向（コサイン重みは半球分布由来）。
-                Vector3 openSum = Vector3.zero;
-                int openCnt = 0;
-                for (int r = 0; r < hemi.Length; r++)
+                var openSum = Vector3.zero;
+                var openCnt = 0;
+                for (var r = 0; r < hemi.Length; r++)
                 {
-                    Vector3 h   = hemi[r];
-                    Vector3 dir = (t * h.x + b * h.y + normalWS * h.z).normalized;
+                    var h   = hemi[r];
+                    var dir = (t * h.x + b * h.y + normalWS * h.z).normalized;
                     if (!Physics.Raycast(originWS + bias, dir, s.maxDistance, mask))
                     {
                         openSum += dir;
@@ -110,7 +110,7 @@ namespace Origuma.EasyShaderCore.Editor
                 }
 
                 // 完全に埋まっている / 開きが相殺 → 法線そのものへフォールバック。
-                Vector3 bentWS = (openCnt > 0 && openSum.sqrMagnitude > 1e-12f)
+                var bentWS = (openCnt > 0 && openSum.sqrMagnitude > 1e-12f)
                     ? openSum.normalized : normalWS;
 
                 // 効き具合を幾何法線との間で補間（0=効果なし）。方向(xyz)のみに作用。
@@ -118,13 +118,13 @@ namespace Origuma.EasyShaderCore.Editor
 
                 // 開き具合(可視率): 遮蔽されなかったレイの割合。0=完全に閉じ / 1=全開。
                 // 方向(xyz)とは独立した幾何量なので strength の影響は受けない。
-                float openness = (float)openCnt / Mathf.Max(1, hemi.Length);
+                var openness = (float)openCnt / Mathf.Max(1, hemi.Length);
 
                 if (hasTan)
                 {
                     // ワールド → タンジェント空間（ランタイムの TBN で再解釈＝スキン追従）。
-                    Vector3 tanWS = xf.TransformDirection(new Vector3(tans[i].x, tans[i].y, tans[i].z)).normalized;
-                    Vector3 biWS  = Vector3.Cross(normalWS, tanWS) * tans[i].w; // handedness 込み従法線
+                    var tanWS = xf.TransformDirection(new Vector3(tans[i].x, tans[i].y, tans[i].z)).normalized;
+                    var biWS  = Vector3.Cross(normalWS, tanWS) * tans[i].w; // handedness 込み従法線
                     var ts = new Vector3(
                         Vector3.Dot(bentWS, tanWS),
                         Vector3.Dot(bentWS, biWS),

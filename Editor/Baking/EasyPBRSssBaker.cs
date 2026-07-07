@@ -71,11 +71,11 @@ namespace Origuma.EasyShaderCore.Editor
                 _cacheMesh = m;
                 _cacheRenderer = r;
             }
-            int n = _cacheSss.Length;
+            var n = _cacheSss.Length;
             var outc = new float[n];
-            for (int i = 0; i < n; i++)
+            for (var i = 0; i < n; i++)
             {
-                float raw = comp == 0 ? _cacheSss[i].x
+                var raw = comp == 0 ? _cacheSss[i].x
                           : comp == 1 ? _cacheSss[i].y
                           : comp == 2 ? _cacheSss[i].z
                           :             _cacheSss[i].w;
@@ -87,50 +87,50 @@ namespace Origuma.EasyShaderCore.Editor
 
         private static Vector4[] ComputeSss(Transform xf, Mesh mesh, Settings s)
         {
-            Vector3[] verts = mesh.vertices;
-            Vector3[] norms = mesh.normals;
-            Vector4[] tans  = mesh.tangents;
-            int n = verts.Length;
+            var verts = mesh.vertices;
+            var norms = mesh.normals;
+            var tans  = mesh.tangents;
+            var n = verts.Length;
             var result = new Vector4[n];
-            int mask = 1 << EasyPbrBakeCore.BakeLayer;
-            Vector3[] hemi = EasyPbrBakeCore.BuildHemisphere(s.rayCount);
+            var mask = 1 << EasyPbrBakeCore.BakeLayer;
+            var hemi = EasyPbrBakeCore.BuildHemisphere(s.rayCount);
 
-            bool hasTan = tans != null && tans.Length == n && norms.Length == n;
+            var hasTan = tans != null && tans.Length == n && norms.Length == n;
             if (!hasTan)
                 Debug.LogWarning($"[EasyPBR Baker] '{mesh.name}' にタンジェント/法線が無いため SSS 透過方向は (0,0,1)=幾何法線へ。" +
                                  "厚み(A)は有効です。インポート設定で Calculate Tangents を有効化すると方向も焼けます。");
 
-            for (int i = 0; i < n; i++)
+            for (var i = 0; i < n; i++)
             {
-                Vector3 nLocal   = norms.Length == n ? norms[i] : Vector3.up;
-                Vector3 normalWS = xf.TransformDirection(nLocal).normalized;
-                Vector3 inward   = -normalWS;
-                Vector3 originIn = xf.TransformPoint(verts[i]) - normalWS * 1e-3f;
-                EasyPbrBakeCore.Basis(inward, out Vector3 t, out Vector3 b);
+                var nLocal   = norms.Length == n ? norms[i] : Vector3.up;
+                var normalWS = xf.TransformDirection(nLocal).normalized;
+                var inward   = -normalWS;
+                var originIn = xf.TransformPoint(verts[i]) - normalWS * 1e-3f;
+                EasyPbrBakeCore.Basis(inward, out var t, out var b);
 
-                float acc = 0f;
-                Vector3 dirSum = Vector3.zero;   // 近ヒット(薄い)方向ほど重い → 透過軸(内向き)
-                for (int r = 0; r < hemi.Length; r++)
+                var acc = 0f;
+                var dirSum = Vector3.zero;   // 近ヒット(薄い)方向ほど重い → 透過軸(内向き)
+                for (var r = 0; r < hemi.Length; r++)
                 {
-                    Vector3 h   = hemi[r];
-                    Vector3 dir = (t * h.x + b * h.y + inward * h.z).normalized;
-                    float d = Physics.Raycast(originIn, dir, out RaycastHit hit, s.maxDistance, mask)
+                    var h   = hemi[r];
+                    var dir = (t * h.x + b * h.y + inward * h.z).normalized;
+                    var d = Physics.Raycast(originIn, dir, out var hit, s.maxDistance, mask)
                         ? hit.distance : s.maxDistance;
                     acc += d;
                     dirSum += dir * Mathf.Clamp01(1f - d / Mathf.Max(1e-4f, s.maxDistance)); // 近いほど重い
                 }
 
-                float avg  = acc / Mathf.Max(1, hemi.Length);
-                float thin = Mathf.Clamp01((1.0f - avg / Mathf.Max(1e-4f, s.maxDistance)) * s.intensity);
+                var avg  = acc / Mathf.Max(1, hemi.Length);
+                var thin = Mathf.Clamp01((1.0f - avg / Mathf.Max(1e-4f, s.maxDistance)) * s.intensity);
 
                 // 透過軸: 最薄方向(内向き)。十分な近ヒットが無ければ真後ろ(-法線)へフォールバック。
-                Vector3 transIn  = dirSum.sqrMagnitude > 1e-12f ? dirSum.normalized : inward;
-                Vector3 transOut = -transIn;   // 外向き(法線的)に持つ＝DICE項の法線置換にそのまま使える
+                var transIn  = dirSum.sqrMagnitude > 1e-12f ? dirSum.normalized : inward;
+                var transOut = -transIn;   // 外向き(法線的)に持つ＝DICE項の法線置換にそのまま使える
 
                 if (hasTan)
                 {
-                    Vector3 tanWS = xf.TransformDirection(new Vector3(tans[i].x, tans[i].y, tans[i].z)).normalized;
-                    Vector3 biWS  = Vector3.Cross(normalWS, tanWS) * tans[i].w;
+                    var tanWS = xf.TransformDirection(new Vector3(tans[i].x, tans[i].y, tans[i].z)).normalized;
+                    var biWS  = Vector3.Cross(normalWS, tanWS) * tans[i].w;
                     var ts = new Vector3(
                         Vector3.Dot(transOut, tanWS),
                         Vector3.Dot(transOut, biWS),

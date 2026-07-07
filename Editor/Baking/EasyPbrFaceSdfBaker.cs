@@ -45,46 +45,46 @@ namespace Origuma.EasyShaderCore.Editor
         private static float[] SdfSweepAxis(Renderer r, Mesh m, Settings s, Vector3 localAxis)
         {
             // 前方ベクトルの取得（フリップ設定を考慮）
-            Vector3 fwd = r.transform.forward * (s.flipForward ? -1f : 1f);
+            var fwd = r.transform.forward * (s.flipForward ? -1f : 1f);
             
             // 指定されたローカル軸（右・左・上・下）をワールド空間の軸に変換
-            Vector3 sweepAxis = r.transform.TransformDirection(localAxis).normalized; 
+            var sweepAxis = r.transform.TransformDirection(localAxis).normalized; 
             
             return ComputeVertexSdf(r.transform, m, fwd, sweepAxis, s);
         }
 
         private static float[] ComputeVertexSdf(Transform xf, Mesh mesh, Vector3 fwd, Vector3 sweepAxis, Settings s)
         {
-            Vector3[] verts = mesh.vertices;
-            Vector3[] norms = mesh.normals;
-            int n = verts.Length;
+            var verts = mesh.vertices;
+            var norms = mesh.normals;
+            var n = verts.Length;
             var result = new float[n];
-            int mask = 1 << EasyPbrBakeCore.BakeLayer;
-            int steps = Mathf.Max(2, s.angleSteps);
-            Vector3 fallbackUp = xf.up;
+            var mask = 1 << EasyPbrBakeCore.BakeLayer;
+            var steps = Mathf.Max(2, s.angleSteps);
+            var fallbackUp = xf.up;
 
-            for (int i = 0; i < n; i++)
+            for (var i = 0; i < n; i++)
             {
                 // 頂点のワールド座標と法線の計算
-                Vector3 N = (norms.Length == n) ? xf.TransformDirection(norms[i]).normalized : fallbackUp;
-                Vector3 originWS = xf.TransformPoint(verts[i]);
+                var N = (norms.Length == n) ? xf.TransformDirection(norms[i]).normalized : fallbackUp;
+                var originWS = xf.TransformPoint(verts[i]);
                 
                 // セルフシャドウのノイズを防ぐための微小なオフセット
-                Vector3 bias = N * 1e-3f;
+                var bias = N * 1e-3f;
 
-                float sdf = 0f;
-                bool prevLit = true;
+                var sdf = 0f;
+                var prevLit = true;
                 
-                for (int st = 0; st < steps; st++)
+                for (var st = 0; st < steps; st++)
                 {
                     // 0 ～ PI (180度) までスイープ
-                    float th = Mathf.PI * st / (steps - 1);
+                    var th = Mathf.PI * st / (steps - 1);
                     
                     // fwd(正面) から始まり、sweepAxis(指定軸) を経由して、-fwd(背面) へ向かうライトベクトル
-                    Vector3 L = (fwd * Mathf.Cos(th) + sweepAxis * Mathf.Sin(th)).normalized;
+                    var L = (fwd * Mathf.Cos(th) + sweepAxis * Mathf.Sin(th)).normalized;
 
                     // ライト方向が法線の表側にあるか判定
-                    bool lit = Vector3.Dot(N, L) > s.ndotlThreshold;
+                    var lit = Vector3.Dot(N, L) > s.ndotlThreshold;
                     
                     // ジオメトリによるキャストシャドウ判定
                     if (lit && s.useCastShadow)

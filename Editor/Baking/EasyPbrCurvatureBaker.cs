@@ -40,14 +40,14 @@ namespace Origuma.EasyShaderCore.Editor
         //  これを符号反転して [-1,1] に正規化し、0.5 中心で 0..1 へエンコード。
         private static float[] ComputeVertexCurvature(Mesh mesh, Settings s)
         {
-            Vector3[] verts = mesh.vertices;
-            Vector3[] norms = mesh.normals;
-            int n = verts.Length;
+            var verts = mesh.vertices;
+            var norms = mesh.normals;
+            var n = verts.Length;
             var sum = new float[n];
             var cnt = new int[n];
-            int[] tris = mesh.triangles;
+            var tris = mesh.triangles;
 
-            for (int t = 0; t < tris.Length; t += 3)
+            for (var t = 0; t < tris.Length; t += 3)
             {
                 int a = tris[t], b = tris[t + 1], c = tris[t + 2];
                 Accum(a, b, verts, norms, sum, cnt); Accum(a, c, verts, norms, sum, cnt);
@@ -56,10 +56,10 @@ namespace Origuma.EasyShaderCore.Editor
             }
 
             var result = new float[n];
-            for (int i = 0; i < n; i++)
+            for (var i = 0; i < n; i++)
             {
-                float mean = cnt[i] > 0 ? sum[i] / cnt[i] : 0f;   // >0 凹 / <0 凸
-                float k    = Mathf.Clamp(-mean * s.intensity, -1f, 1f); // 凸を正に
+                var mean = cnt[i] > 0 ? sum[i] / cnt[i] : 0f;   // >0 凹 / <0 凸
+                var k    = Mathf.Clamp(-mean * s.intensity, -1f, 1f); // 凸を正に
                 result[i]  = 0.5f + 0.5f * k;                     // 0.5平坦 / >0.5凸 / <0.5凹
             }
             return result;
@@ -68,8 +68,8 @@ namespace Origuma.EasyShaderCore.Editor
         private static void Accum(int i, int j, Vector3[] verts, Vector3[] norms, float[] sum, int[] cnt)
         {
             if (norms.Length != verts.Length) return;
-            Vector3 d = verts[j] - verts[i];
-            float len = d.magnitude;
+            var d = verts[j] - verts[i];
+            var len = d.magnitude;
             if (len < 1e-7f) return;
             sum[i] += Vector3.Dot(d / len, norms[i]);
             cnt[i]++;

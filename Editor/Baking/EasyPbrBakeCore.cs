@@ -41,7 +41,7 @@ namespace Origuma.EasyShaderCore.Editor
                 return false;
             }
 
-            bool prevBackface = Physics.queriesHitBackfaces;
+            var prevBackface = Physics.queriesHitBackfaces;
             var temps = new List<GameObject>();
             var usable = new List<Renderer>();
             var meshes = new List<Mesh>();
@@ -51,7 +51,7 @@ namespace Origuma.EasyShaderCore.Editor
                 EditorUtility.DisplayProgressBar("EasyPBR Baker", "メッシュを準備中...", 0.05f);
                 foreach (var r in renderers)
                 {
-                    var m = ResolveMesh(r, out bool tmp);
+                    var m = ResolveMesh(r, out var tmp);
                     if (m == null || m.vertexCount == 0) continue;
                     usable.Add(r); meshes.Add(m); tempFlags.Add(tmp);
                 }
@@ -65,7 +65,7 @@ namespace Origuma.EasyShaderCore.Editor
                 if (needsCollider)
                 {
                     Physics.queriesHitBackfaces = true;
-                    for (int i = 0; i < usable.Count; i++)
+                    for (var i = 0; i < usable.Count; i++)
                     {
                         var r = usable[i];
                         var go = new GameObject("~EasyPbrBakeCollider") { hideFlags = HideFlags.HideAndDontSave };
@@ -80,21 +80,21 @@ namespace Origuma.EasyShaderCore.Editor
                 }
 
                 var px = new Color32[res * res];
-                byte clearR = ToClearByte(clearValue);
-                byte clearG = ToClearByte(clearValueG < 0f ? clearValue : clearValueG);
-                byte clearB = ToClearByte(clearValueB < 0f ? clearValue : clearValueB);
-                byte clearA = ToClearByte(clearValueA < 0f ? 1f : clearValueA);
+                var clearR = ToClearByte(clearValue);
+                var clearG = ToClearByte(clearValueG < 0f ? clearValue : clearValueG);
+                var clearB = ToClearByte(clearValueB < 0f ? clearValue : clearValueB);
+                var clearA = ToClearByte(clearValueA < 0f ? 1f : clearValueA);
                 var clearPx = new Color32(clearR, clearG, clearB, clearA);
-                for (int i = 0; i < px.Length; i++) px[i] = clearPx;
+                for (var i = 0; i < px.Length; i++) px[i] = clearPx;
                 var covered = new bool[res * res];
 
-                for (int i = 0; i < usable.Count; i++)
+                for (var i = 0; i < usable.Count; i++)
                 {
                     EditorUtility.DisplayProgressBar("EasyPBR Baker",
                         $"計算中... ({i + 1}/{usable.Count})", 0.1f + 0.7f * i / usable.Count);
                     
                     // チャンネルごとの計算とスムージング
-                    float[] vr = computeR(usable[i], meshes[i]);
+                    var vr = computeR(usable[i], meshes[i]);
                     SmoothVertexScalar(meshes[i], vr, smooth);
                     
                     float[] vg = null, vb = null, va = null;
@@ -102,7 +102,7 @@ namespace Origuma.EasyShaderCore.Editor
                     if (computeB != null) { vb = computeB(usable[i], meshes[i]); SmoothVertexScalar(meshes[i], vb, smooth); }
                     if (computeA != null) { va = computeA(usable[i], meshes[i]); SmoothVertexScalar(meshes[i], va, smooth); }
 
-                    int[] subs = ResolveSubmeshes(usable[i], material, meshes[i]);
+                    var subs = ResolveSubmeshes(usable[i], material, meshes[i]);
                     RasterizeInto(px, covered, meshes[i], vr, vg, vb, va, res, subs);
                 }
 
@@ -114,8 +114,8 @@ namespace Origuma.EasyShaderCore.Editor
                 Dilate(tex, dilate);
                 BlurTexture(tex, blur);
 
-                string meshName = usable.Count == 1 ? ResolveSourceMeshName(usable[0]) : root.name;
-                bool ok = SaveAndAssign(tex, material, meshName, suffix, slot, strengthProp);
+                var meshName = usable.Count == 1 ? ResolveSourceMeshName(usable[0]) : root.name;
+                var ok = SaveAndAssign(tex, material, meshName, suffix, slot, strengthProp);
                 UnityEngine.Object.DestroyImmediate(tex);
                 return ok;
             }
@@ -123,7 +123,7 @@ namespace Origuma.EasyShaderCore.Editor
             {
                 Physics.queriesHitBackfaces = prevBackface;
                 foreach (var go in temps) if (go != null) UnityEngine.Object.DestroyImmediate(go);
-                for (int i = 0; i < meshes.Count; i++)
+                for (var i = 0; i < meshes.Count; i++)
                     if (tempFlags[i] && meshes[i] != null) UnityEngine.Object.DestroyImmediate(meshes[i]);
                 EditorUtility.ClearProgressBar();
             }
@@ -164,10 +164,10 @@ namespace Origuma.EasyShaderCore.Editor
         {
             var mats = renderer.sharedMaterials;
             var list = new List<int>();
-            for (int i = 0; i < mesh.subMeshCount; i++)
+            for (var i = 0; i < mesh.subMeshCount; i++)
                 if (i < mats.Length && mats[i] == material) list.Add(i);
             if (list.Count == 0)
-                for (int i = 0; i < mesh.subMeshCount; i++) list.Add(i);
+                for (var i = 0; i < mesh.subMeshCount; i++) list.Add(i);
             return list.ToArray();
         }
 
@@ -182,12 +182,12 @@ namespace Origuma.EasyShaderCore.Editor
         {
             count = Mathf.Max(1, count);
             var dirs = new Vector3[count];
-            float ga = Mathf.PI * (3f - Mathf.Sqrt(5f));
-            for (int i = 0; i < count; i++)
+            var ga = Mathf.PI * (3f - Mathf.Sqrt(5f));
+            for (var i = 0; i < count; i++)
             {
-                float z = Mathf.Sqrt((i + 0.5f) / count);
-                float r = Mathf.Sqrt(1f - z * z);
-                float phi = i * ga;
+                var z = Mathf.Sqrt((i + 0.5f) / count);
+                var r = Mathf.Sqrt(1f - z * z);
+                var phi = i * ga;
                 dirs[i] = new Vector3(Mathf.Cos(phi) * r, Mathf.Sin(phi) * r, z);
             }
             return dirs;
@@ -195,7 +195,7 @@ namespace Origuma.EasyShaderCore.Editor
 
         internal static void Basis(Vector3 n, out Vector3 t, out Vector3 b)
         {
-            Vector3 up = Mathf.Abs(n.y) < 0.99f ? Vector3.up : Vector3.right;
+            var up = Mathf.Abs(n.y) < 0.99f ? Vector3.up : Vector3.right;
             t = Vector3.Normalize(Vector3.Cross(up, n));
             b = Vector3.Cross(n, t);
         }
@@ -206,17 +206,17 @@ namespace Origuma.EasyShaderCore.Editor
                                           float[] vR, float[] vG, float[] vB, float[] vA, 
                                           int res, int[] submeshes)
         {
-            Vector2[] uv = mesh.uv;
+            var uv = mesh.uv;
             if (uv == null || uv.Length != mesh.vertexCount) return;
             
-            bool hasG = vG != null;
-            bool hasB = vB != null;
-            bool hasA = vA != null;
+            var hasG = vG != null;
+            var hasB = vB != null;
+            var hasA = vA != null;
 
-            foreach (int sub in submeshes)
+            foreach (var sub in submeshes)
             {
-                int[] tris = mesh.GetTriangles(sub);
-                for (int ti = 0; ti < tris.Length; ti += 3)
+                var tris = mesh.GetTriangles(sub);
+                for (var ti = 0; ti < tris.Length; ti += 3)
                 {
                     int i0 = tris[ti], i1 = tris[ti + 1], i2 = tris[ti + 2];
                     Vector2 p0 = uv[i0] * res, p1 = uv[i1] * res, p2 = uv[i2] * res;
@@ -239,33 +239,33 @@ namespace Origuma.EasyShaderCore.Editor
             float aa, float ab, float ac, 
             bool hasG, bool hasB, bool hasA)
         {
-            int minX = Mathf.Clamp(Mathf.FloorToInt(Mathf.Min(pA.x, Mathf.Min(pB.x, pC.x))), 0, res - 1);
-            int maxX = Mathf.Clamp(Mathf.CeilToInt (Mathf.Max(pA.x, Mathf.Max(pB.x, pC.x))), 0, res - 1);
-            int minY = Mathf.Clamp(Mathf.FloorToInt(Mathf.Min(pA.y, Mathf.Min(pB.y, pC.y))), 0, res - 1);
-            int maxY = Mathf.Clamp(Mathf.CeilToInt (Mathf.Max(pA.y, Mathf.Max(pB.y, pC.y))), 0, res - 1);
+            var minX = Mathf.Clamp(Mathf.FloorToInt(Mathf.Min(pA.x, Mathf.Min(pB.x, pC.x))), 0, res - 1);
+            var maxX = Mathf.Clamp(Mathf.CeilToInt (Mathf.Max(pA.x, Mathf.Max(pB.x, pC.x))), 0, res - 1);
+            var minY = Mathf.Clamp(Mathf.FloorToInt(Mathf.Min(pA.y, Mathf.Min(pB.y, pC.y))), 0, res - 1);
+            var maxY = Mathf.Clamp(Mathf.CeilToInt (Mathf.Max(pA.y, Mathf.Max(pB.y, pC.y))), 0, res - 1);
 
-            float denom = (pB.y - pC.y) * (pA.x - pC.x) + (pC.x - pB.x) * (pA.y - pC.y);
+            var denom = (pB.y - pC.y) * (pA.x - pC.x) + (pC.x - pB.x) * (pA.y - pC.y);
             if (Mathf.Abs(denom) < 1e-9f) return;
-            float invDen = 1f / denom;
+            var invDen = 1f / denom;
 
-            for (int y = minY; y <= maxY; y++)
-            for (int x = minX; x <= maxX; x++)
+            for (var y = minY; y <= maxY; y++)
+            for (var x = minX; x <= maxX; x++)
             {
                 float fx = x + 0.5f, fy = y + 0.5f;
-                float w0 = ((pB.y - pC.y) * (fx - pC.x) + (pC.x - pB.x) * (fy - pC.y)) * invDen;
-                float w1 = ((pC.y - pA.y) * (fx - pC.x) + (pA.x - pC.x) * (fy - pC.y)) * invDen;
-                float w2 = 1f - w0 - w1;
+                var w0 = ((pB.y - pC.y) * (fx - pC.x) + (pC.x - pB.x) * (fy - pC.y)) * invDen;
+                var w1 = ((pC.y - pA.y) * (fx - pC.x) + (pA.x - pC.x) * (fy - pC.y)) * invDen;
+                var w2 = 1f - w0 - w1;
                 if (w0 < -1e-4f || w1 < -1e-4f || w2 < -1e-4f) continue;
 
                 // Rチャンネル計算
-                byte rByte = (byte)(Mathf.Clamp01(w0 * ra + w1 * rb + w2 * rc) * 255f + 0.5f);
+                var rByte = (byte)(Mathf.Clamp01(w0 * ra + w1 * rb + w2 * rc) * 255f + 0.5f);
                 
                 // 1chのみの場合はグレースケール(R=G=B)、2chの場合は G に入り B は 0 になるようにフォールバック
-                byte gByte = hasG ? (byte)(Mathf.Clamp01(w0 * ga + w1 * gb + w2 * gc) * 255f + 0.5f) : rByte;
-                byte bByte = hasB ? (byte)(Mathf.Clamp01(w0 * ba + w1 * bb + w2 * bc) * 255f + 0.5f) : (hasG ? (byte)0 : rByte);
-                byte aByte = hasA ? (byte)(Mathf.Clamp01(w0 * aa + w1 * ab + w2 * ac) * 255f + 0.5f) : (byte)255;
+                var gByte = hasG ? (byte)(Mathf.Clamp01(w0 * ga + w1 * gb + w2 * gc) * 255f + 0.5f) : rByte;
+                var bByte = hasB ? (byte)(Mathf.Clamp01(w0 * ba + w1 * bb + w2 * bc) * 255f + 0.5f) : (hasG ? (byte)0 : rByte);
+                var aByte = hasA ? (byte)(Mathf.Clamp01(w0 * aa + w1 * ab + w2 * ac) * 255f + 0.5f) : (byte)255;
 
-                int idx = y * res + x;
+                var idx = y * res + x;
                 px[idx] = new Color32(rByte, gByte, bByte, aByte);
                 covered[idx] = true;
             }
@@ -274,24 +274,24 @@ namespace Origuma.EasyShaderCore.Editor
         private static void Dilate(Texture2D tex, int iterations)
         {
             if (_coverage == null || iterations <= 0) return;
-            int res = tex.width;
+            var res = tex.width;
             var px = tex.GetPixels32();
             var covered = (bool[])_coverage.Clone();
 
-            for (int it = 0; it < iterations; it++)
+            for (var it = 0; it < iterations; it++)
             {
                 var next = (bool[])covered.Clone();
-                for (int y = 0; y < res; y++)
-                for (int x = 0; x < res; x++)
+                for (var y = 0; y < res; y++)
+                for (var x = 0; x < res; x++)
                 {
-                    int idx = y * res + x;
+                    var idx = y * res + x;
                     if (covered[idx]) continue;
-                    for (int dy = -1; dy <= 1 && !next[idx]; dy++)
-                    for (int dx = -1; dx <= 1; dx++)
+                    for (var dy = -1; dy <= 1 && !next[idx]; dy++)
+                    for (var dx = -1; dx <= 1; dx++)
                     {
                         int nx = x + dx, ny = y + dy;
                         if (nx < 0 || ny < 0 || nx >= res || ny >= res) continue;
-                        int nIdx = ny * res + nx;
+                        var nIdx = ny * res + nx;
                         if (covered[nIdx]) { px[idx] = px[nIdx]; next[idx] = true; break; }
                     }
                 }
@@ -305,46 +305,46 @@ namespace Origuma.EasyShaderCore.Editor
         private static void SmoothVertexScalar(Mesh mesh, float[] v, int iterations)
         {
             if (iterations <= 0) return;
-            int n = v.Length;
-            int[] tris = mesh.triangles;
+            var n = v.Length;
+            var tris = mesh.triangles;
 
-            for (int it = 0; it < iterations; it++)
+            for (var it = 0; it < iterations; it++)
             {
                 var sum = new float[n];
                 var count = new int[n];
-                for (int i = 0; i < n; i++) { sum[i] = v[i]; count[i] = 1; }
+                for (var i = 0; i < n; i++) { sum[i] = v[i]; count[i] = 1; }
 
-                for (int t = 0; t < tris.Length; t += 3)
+                for (var t = 0; t < tris.Length; t += 3)
                 {
                     int a = tris[t], b = tris[t + 1], c = tris[t + 2];
                     sum[a] += v[b] + v[c]; count[a] += 2;
                     sum[b] += v[a] + v[c]; count[b] += 2;
                     sum[c] += v[a] + v[b]; count[c] += 2;
                 }
-                for (int i = 0; i < n; i++) v[i] = sum[i] / count[i];
+                for (var i = 0; i < n; i++) v[i] = sum[i] / count[i];
             }
         }
 
         private static void BlurTexture(Texture2D tex, int radius)
         {
             if (radius <= 0 || _coverage == null) { _coverage = null; return; }
-            int res = tex.width;
+            var res = tex.width;
             var src = tex.GetPixels32();
             var dst = (Color32[])src.Clone();
             var cov = _coverage;
 
-            for (int y = 0; y < res; y++)
-            for (int x = 0; x < res; x++)
+            for (var y = 0; y < res; y++)
+            for (var x = 0; x < res; x++)
             {
-                int idx = y * res + x;
+                var idx = y * res + x;
                 if (!cov[idx]) continue;
                 int accR = 0, accG = 0, accB = 0, accA = 0, num = 0;
-                for (int dy = -radius; dy <= radius; dy++)
-                for (int dx = -radius; dx <= radius; dx++)
+                for (var dy = -radius; dy <= radius; dy++)
+                for (var dx = -radius; dx <= radius; dx++)
                 {
                     int nx = x + dx, ny = y + dy;
                     if (nx < 0 || ny < 0 || nx >= res || ny >= res) continue;
-                    int nIdx = ny * res + nx;
+                    var nIdx = ny * res + nx;
                     if (!cov[nIdx]) continue;
                     accR += src[nIdx].r; accG += src[nIdx].g; accB += src[nIdx].b; accA += src[nIdx].a; num++;
                 }
@@ -361,7 +361,7 @@ namespace Origuma.EasyShaderCore.Editor
 
         private static string Sanitize(string name)
         {
-            foreach (char c in Path.GetInvalidFileNameChars())
+            foreach (var c in Path.GetInvalidFileNameChars())
                 name = name.Replace(c, '_');
             return name;
         }
@@ -369,17 +369,17 @@ namespace Origuma.EasyShaderCore.Editor
         private static bool SaveAndAssign(Texture2D tex, Material material, string meshName,
                                           string suffix, string slot, string strengthProp)
         {
-            string matPath = AssetDatabase.GetAssetPath(material);
-            string dir = string.IsNullOrEmpty(matPath) ? "Assets" : Path.GetDirectoryName(matPath);
-            string bakedDir = Path.Combine(dir, "Baked").Replace('\\', '/');
+            var matPath = AssetDatabase.GetAssetPath(material);
+            var dir = string.IsNullOrEmpty(matPath) ? "Assets" : Path.GetDirectoryName(matPath);
+            var bakedDir = Path.Combine(dir, "Baked").Replace('\\', '/');
             if (!AssetDatabase.IsValidFolder(bakedDir))
                 AssetDatabase.CreateFolder(dir, "Baked");
 
             // 同名ファイルは上書き（連番で増やさない）。GUID が維持されるため、
             // アサイン済みの参照はそのまま新しい内容に更新される。
             // 以前の結果に戻したい場合は焼き直すか、バージョン管理で戻す。
-            string baseName = Sanitize($"{meshName}_{material.name}_{suffix}");
-            string path = $"{bakedDir}/{baseName}.png";
+            var baseName = Sanitize($"{meshName}_{material.name}_{suffix}");
+            var path = $"{bakedDir}/{baseName}.png";
 
             File.WriteAllBytes(path, tex.EncodeToPNG());
             AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
@@ -402,7 +402,7 @@ namespace Origuma.EasyShaderCore.Editor
                 material.SetFloat(strengthProp, 1f);
             EditorUtility.SetDirty(material);
 
-            string assignNote = (slot != null && material.HasProperty(slot)) ? $"（{slot} に自動アサイン）" : "（保存のみ）";
+            var assignNote = (slot != null && material.HasProperty(slot)) ? $"（{slot} に自動アサイン）" : "（保存のみ）";
             Debug.Log($"[EasyPBR Baker] {suffix} baked → {path} {assignNote}", imported);
             return true;
         }

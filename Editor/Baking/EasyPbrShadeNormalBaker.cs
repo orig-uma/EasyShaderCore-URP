@@ -51,11 +51,11 @@ namespace Origuma.EasyShaderCore.Editor
                 _cacheTS = ComputeSmoothedTangentNormals(r.transform, m, s);
                 _cacheMesh = m;
             }
-            int n = _cacheTS.Length;
+            var n = _cacheTS.Length;
             var outc = new float[n];
-            for (int i = 0; i < n; i++)
+            for (var i = 0; i < n; i++)
             {
-                float raw = comp == 0 ? _cacheTS[i].x : comp == 1 ? _cacheTS[i].y : _cacheTS[i].z;
+                var raw = comp == 0 ? _cacheTS[i].x : comp == 1 ? _cacheTS[i].y : _cacheTS[i].z;
                 outc[i] = 0.5f + 0.5f * raw; // 法線マップと同じ 0.5 中心エンコード
             }
             return outc;
@@ -63,13 +63,13 @@ namespace Origuma.EasyShaderCore.Editor
 
         private static Vector3[] ComputeSmoothedTangentNormals(Transform xf, Mesh mesh, Settings s)
         {
-            Vector3[] verts = mesh.vertices;
-            Vector3[] norms = mesh.normals;
-            Vector4[] tans  = mesh.tangents;
-            int[]     tris  = mesh.triangles;
-            int n = verts.Length;
+            var verts = mesh.vertices;
+            var norms = mesh.normals;
+            var tans  = mesh.tangents;
+            var     tris  = mesh.triangles;
+            var n = verts.Length;
 
-            bool hasTan = tans != null && tans.Length == n;
+            var hasTan = tans != null && tans.Length == n;
             if (!hasTan)
                 Debug.LogWarning($"[EasyPBR Baker] '{mesh.name}' にタンジェントが無いため Shade Normal はフラット(無効)で焼かれます。" +
                                  "インポート設定で Calculate Tangents を有効化するか、UV を用意してください。");
@@ -78,13 +78,13 @@ namespace Origuma.EasyShaderCore.Editor
             var groupOf = new int[n];
             var keyToGroup = new Dictionary<Vector3Int, int>(n);
             var groupCount = 0;
-            for (int i = 0; i < n; i++)
+            for (var i = 0; i < n; i++)
             {
                 var key = new Vector3Int(
                     Mathf.RoundToInt(verts[i].x * 1e5f),
                     Mathf.RoundToInt(verts[i].y * 1e5f),
                     Mathf.RoundToInt(verts[i].z * 1e5f));
-                if (!keyToGroup.TryGetValue(key, out int g))
+                if (!keyToGroup.TryGetValue(key, out var g))
                 {
                     g = groupCount++;
                     keyToGroup.Add(key, g);
@@ -94,15 +94,15 @@ namespace Origuma.EasyShaderCore.Editor
 
             // グループ初期法線 = 所属頂点法線の平均（溶接するだけで硬エッジが消える）。
             var groupN = new Vector3[groupCount];
-            for (int i = 0; i < n; i++)
+            for (var i = 0; i < n; i++)
                 if (norms.Length == n) groupN[groupOf[i]] += norms[i];
-            for (int g = 0; g < groupCount; g++)
+            for (var g = 0; g < groupCount; g++)
                 groupN[g] = groupN[g].sqrMagnitude > 1e-12f ? groupN[g].normalized : Vector3.up;
 
             // --- 2) グループ隣接（三角形エッジ由来）------------------------------
             var adjacency = new HashSet<int>[groupCount];
-            for (int g = 0; g < groupCount; g++) adjacency[g] = new HashSet<int>();
-            for (int t = 0; t < tris.Length; t += 3)
+            for (var g = 0; g < groupCount; g++) adjacency[g] = new HashSet<int>();
+            for (var t = 0; t < tris.Length; t += 3)
             {
                 int a = groupOf[tris[t]], b = groupOf[tris[t + 1]], c = groupOf[tris[t + 2]];
                 if (a != b) { adjacency[a].Add(b); adjacency[b].Add(a); }
@@ -113,12 +113,12 @@ namespace Origuma.EasyShaderCore.Editor
             // --- 3) ラプラシアン平滑化（自分＋隣接平均を反復）--------------------
             var current = groupN;
             var next = new Vector3[groupCount];
-            for (int it = 0; it < s.smoothIterations; it++)
+            for (var it = 0; it < s.smoothIterations; it++)
             {
-                for (int g = 0; g < groupCount; g++)
+                for (var g = 0; g < groupCount; g++)
                 {
-                    Vector3 sum = current[g];
-                    foreach (int nb in adjacency[g]) sum += current[nb];
+                    var sum = current[g];
+                    foreach (var nb in adjacency[g]) sum += current[nb];
                     next[g] = sum.sqrMagnitude > 1e-12f ? sum.normalized : current[g];
                 }
                 (current, next) = (next, current);
@@ -126,15 +126,15 @@ namespace Origuma.EasyShaderCore.Editor
 
             // --- 4) 各頂点の TBN で接線空間へ射影（Bent Normal と同じ符号化）-----
             var result = new Vector3[n];
-            for (int i = 0; i < n; i++)
+            for (var i = 0; i < n; i++)
             {
                 if (!hasTan) { result[i] = new Vector3(0, 0, 1); continue; }
 
-                Vector3 nLocal = norms.Length == n ? norms[i] : Vector3.up;
-                Vector3 normalWS   = xf.TransformDirection(nLocal).normalized;
-                Vector3 smoothedWS = xf.TransformDirection(current[groupOf[i]]).normalized;
-                Vector3 tanWS = xf.TransformDirection(new Vector3(tans[i].x, tans[i].y, tans[i].z)).normalized;
-                Vector3 biWS  = Vector3.Cross(normalWS, tanWS) * tans[i].w;
+                var nLocal = norms.Length == n ? norms[i] : Vector3.up;
+                var normalWS   = xf.TransformDirection(nLocal).normalized;
+                var smoothedWS = xf.TransformDirection(current[groupOf[i]]).normalized;
+                var tanWS = xf.TransformDirection(new Vector3(tans[i].x, tans[i].y, tans[i].z)).normalized;
+                var biWS  = Vector3.Cross(normalWS, tanWS) * tans[i].w;
 
                 var ts = new Vector3(
                     Vector3.Dot(smoothedWS, tanWS),

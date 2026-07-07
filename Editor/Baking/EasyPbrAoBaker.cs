@@ -35,31 +35,31 @@ namespace Origuma.EasyShaderCore.Editor
 
         private static float[] ComputeVertexAO(Transform xf, Mesh mesh, Settings s)
         {
-            Vector3[] verts = mesh.vertices;
-            Vector3[] norms = mesh.normals;
-            int n = verts.Length;
+            var verts = mesh.vertices;
+            var norms = mesh.normals;
+            var n = verts.Length;
             var result = new float[n];
-            int mask = 1 << EasyPbrBakeCore.BakeLayer;
-            Vector3[] hemi = EasyPbrBakeCore.BuildHemisphere(s.rayCount);
+            var mask = 1 << EasyPbrBakeCore.BakeLayer;
+            var hemi = EasyPbrBakeCore.BuildHemisphere(s.rayCount);
 
-            for (int i = 0; i < n; i++)
+            for (var i = 0; i < n; i++)
             {
-                Vector3 nLocal   = norms.Length == n ? norms[i] : Vector3.up;
-                Vector3 originWS = xf.TransformPoint(verts[i]);
-                Vector3 normalWS = xf.TransformDirection(nLocal).normalized;
-                Vector3 bias     = normalWS * 1e-3f;
-                EasyPbrBakeCore.Basis(normalWS, out Vector3 t, out Vector3 b);
+                var nLocal   = norms.Length == n ? norms[i] : Vector3.up;
+                var originWS = xf.TransformPoint(verts[i]);
+                var normalWS = xf.TransformDirection(nLocal).normalized;
+                var bias     = normalWS * 1e-3f;
+                EasyPbrBakeCore.Basis(normalWS, out var t, out var b);
 
-                int hits = 0;
-                for (int r = 0; r < hemi.Length; r++)
+                var hits = 0;
+                for (var r = 0; r < hemi.Length; r++)
                 {
-                    Vector3 h = hemi[r];
-                    Vector3 dir = (t * h.x + b * h.y + normalWS * h.z).normalized;
+                    var h = hemi[r];
+                    var dir = (t * h.x + b * h.y + normalWS * h.z).normalized;
                     if (Physics.Raycast(originWS + bias, dir, s.maxDistance, mask)) hits++;
                 }
-                float occ = (float)hits / Mathf.Max(1, hemi.Length);
-                float bright = Mathf.Clamp01(1.0f - occ * s.intensity);
-                float toWhite = Mathf.Clamp01(Mathf.InverseLerp(s.enclosedCutoff - 0.05f, s.enclosedCutoff, occ));
+                var occ = (float)hits / Mathf.Max(1, hemi.Length);
+                var bright = Mathf.Clamp01(1.0f - occ * s.intensity);
+                var toWhite = Mathf.Clamp01(Mathf.InverseLerp(s.enclosedCutoff - 0.05f, s.enclosedCutoff, occ));
                 bright = Mathf.Lerp(bright, 1.0f, toWhite);
                 result[i] = Mathf.Lerp(s.floor, 1.0f, bright);
             }
