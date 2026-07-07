@@ -17,7 +17,7 @@ namespace Origuma.EasyShaderCore.Editor
         private GameObject _targetObject;
         private DefaultAsset _targetFolder;
 
-        [MenuItem("Window/EasyShader/Material Replacer")]
+        [MenuItem("Window/Origuma/Material Replacer")]
         public static void ShowWindow()
         {
             GetWindow<MaterialReplacerWindow>("Material Replacer");

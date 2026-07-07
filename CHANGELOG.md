@@ -2,7 +2,7 @@
 
 ## [0.2.0]
 
-- **MaterialReplacerWindow を EasyPBR から移管**（`Editor/MaterialReplacerWindow.cs`）。メニューはシェーダー非依存の `Window > EasyShader > Material Replacer` へ変更（namespace は `Origuma.EasyShaderCore.Editor`）
+- **MaterialReplacerWindow を EasyPBR から移管**（`Editor/MaterialReplacerWindow.cs`）。メニューはシェーダー非依存の `Window > Origuma > Material Replacer` へ変更（namespace は `Origuma.EasyShaderCore.Editor`）
 - **FeatureSetup 基盤を追加**（`Editor/FeatureSetup.cs` / `Editor/FeatureSetupWindowBase.cs`）:
   - アクティブな URP Asset（GraphicsSettings 既定 + QualitySettings 全レベル）からの Renderer Data 自動収集
   - RendererFeature の検索 / 追加（サブアセット化 + `m_RendererFeatureMap` 同期 + Undo）/ 削除 / 有効切替
