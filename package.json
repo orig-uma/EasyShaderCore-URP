@@ -1,0 +1,27 @@
+{
+  "name": "com.origuma.easyshader-core",
+  "version": "0.1.0",
+  "displayName": "EasyShaderCore for URP",
+  "description": "Shared foundation for EasyPBR and EasyToon: common HLSL library (BRDF / effects / URP shadow sampling), map bakers (AO / Bent Normal / Shade Normal / Cavity / Curvature / SSS / Hair Flow / Face SDF) and ShaderGUI building blocks. Not intended to be used on its own - install it as a dependency of EasyPBR / EasyToon.",
+  "unity": "6000.3",
+  "keywords": [
+    "shader",
+    "urp",
+    "hlsl",
+    "baking",
+    "shadergui",
+    "library"
+  ],
+  "author": {
+    "name": "Origuma",
+    "url": "https://github.com/orig-uma"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/orig-uma/EasyShaderCore-URP.git"
+  },
+  "dependencies": {
+    "com.unity.render-pipelines.universal": "17.3.0"
+  },
+  "license": "MIT"
+}
