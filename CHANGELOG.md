@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **UrpShadowSetupWindow を追加**（`Editor/UrpShadowSetupWindow.cs`）。メニューは `Window > Origuma > URP Shadow Setup`（namespace は `Origuma.EasyShaderCore.Editor`）:
+  - QualitySettings 全レベル + GraphicsSettings 既定から `UniversalRenderPipelineAsset` を収集し、使用品質レベルをラベル併記（★=アクティブ品質レベル）
+  - Shadow 設定のプリセット 5 種（Unity 既定 / 低 / 中 / 高 / キャラ重視）をテーブル駆動で定義。選択アセットへ一括適用（現在値→適用後のプレビュー表・変更行の強調付き）
+  - 書き込みは `SerializedObject` 経由で `m_*` フィールドを直接操作（`m_AnyShadowsSupported` の連動整合を維持、Undo は自動記録、URP バージョン差で欠けるフィールドはスキップして警告）
+
 ## [0.2.0]
 
 - **MaterialReplacerWindow を EasyPBR から移管**（`Editor/MaterialReplacerWindow.cs`）。メニューはシェーダー非依存の `Window > Origuma > Material Replacer` へ変更（namespace は `Origuma.EasyShaderCore.Editor`）

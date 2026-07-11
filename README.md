@@ -11,6 +11,7 @@ EasyPBR（`com.origuma.easypbr-urp`）/ EasyToon（`com.origuma.easytoon-urp`）
 | `Runtime/Shaders/Common/` | 純粋関数の HLSL ライブラリ（BRDF 群 / 色・数学・サンプリング / MatCap・Emission・Dissolve / URP 影サンプラ・環境反射） |
 | `Editor/Baking/` | マップベイク（AO / Bent Normal / Shade Normal / Cavity / Curvature / SSS / Hair Flow / Face SDF）。`Origuma.EasyShaderCore.Editor` 名前空間・public |
 | `Editor/ShaderGuiKit.cs` | マテリアル Inspector 用の汎用描画キット（折りたたみ・日英ラベル・⚡バリアント注記） |
+| `Editor/UrpShadowSetupWindow.cs` | URP Asset の Shadow 設定プリセット適用ツール（Window > Origuma > URP Shadow Setup） |
 
 ## インストール
 
