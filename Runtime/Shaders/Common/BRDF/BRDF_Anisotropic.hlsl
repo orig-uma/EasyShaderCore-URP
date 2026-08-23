@@ -23,7 +23,15 @@ AnisoPrecomp PrecomputeAnisoTangent(
 {
     // 焼いた毛流れ(倍角)を信頼度×強度で識別(1,0)へブレンド。strength 0 で完全に従来挙動。
     float2 fv = lerp(float2(1.0, 0.0), float2(flowC2, flowS2), saturate(flowConf * flowStrength));
-    float theta = 0.5 * atan2(fv.y, fv.x);
+
+    // **向きが原点に潰れたときの `atan2(0,0)` は未定義。**
+    // 焼いた毛流れの「ここは向きが決まらない」は倍角表現で (0,0) になり、
+    // 旋毛の中心や毛流れの交差点に必ず現れる。信頼度×強度が 1 に飽和すると
+    // lerp が完全にそちらへ寄って長さ 0 になる。
+    // 返り値は環境依存（0 のことも NaN のこともある）で、NaN なら
+    // sincos → 接線フレーム → **ハイライトに黒い穴が開く**。
+    // 潰れていたら接線そのもの（theta = 0）へ戻す。
+    float theta = (dot(fv, fv) > 1e-12) ? (0.5 * atan2(fv.y, fv.x)) : 0.0;
 
     float rad = theta + radians(angle + 90.0);
     float s, c; sincos(rad, s, c);

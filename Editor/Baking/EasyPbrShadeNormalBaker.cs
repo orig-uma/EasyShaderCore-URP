@@ -75,22 +75,8 @@ namespace Origuma.EasyShaderCore.Editor
                                  "インポート設定で Calculate Tangents を有効化するか、UV を用意してください。");
 
             // --- 1) 位置溶接: 量子化した位置で頂点をグループ化 -----------------
-            var groupOf = new int[n];
-            var keyToGroup = new Dictionary<Vector3Int, int>(n);
-            var groupCount = 0;
-            for (var i = 0; i < n; i++)
-            {
-                var key = new Vector3Int(
-                    Mathf.RoundToInt(verts[i].x * 1e5f),
-                    Mathf.RoundToInt(verts[i].y * 1e5f),
-                    Mathf.RoundToInt(verts[i].z * 1e5f));
-                if (!keyToGroup.TryGetValue(key, out var g))
-                {
-                    g = groupCount++;
-                    keyToGroup.Add(key, g);
-                }
-                groupOf[i] = g;
-            }
+            // 本体は EasyPbrBakeCore.WeldByPosition（Face SDF と共有。T-372）。
+            var groupOf = EasyPbrBakeCore.WeldByPosition(verts, out var groupCount);
 
             // グループ初期法線 = 所属頂点法線の平均（溶接するだけで硬エッジが消える）。
             var groupN = new Vector3[groupCount];

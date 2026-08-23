@@ -13,15 +13,35 @@ float EasyPBR_D_GGX(float NdotH, float alpha)
 {
     float a2 = alpha * alpha;
     float d  = (NdotH * a2 - NdotH) * NdotH + 1.0; // NdotH^2 (a2-1) + 1
-    return a2 / (PI * d * d + 1e-7);
+
+    // **下駄ではなく下限で挟む。しかも下限は十分小さくすること。**
+    // 以前は `PI * d * d + 1e-7` だった。反射の芯（NdotH = 1）では d = a2 なので、
+    // 滑らかな面ほど `PI * d * d` が小さくなり、**1e-7 のほうが支配的になる**:
+    //
+    //   Smoothness 0.80 → 山 199 が 197   （0.99 倍・実害なし）
+    //   Smoothness 0.90 → 山 3,183 が 761 （**0.24 倍**）
+    //   Smoothness 0.95 → 山 50,930 が 62 （**0.001 倍**）
+    //
+    // 真珠ビーズ・金具・エナメルのような**滑らかな材質でだけ**ハイライトが
+    // 潰れる。粗い材質では起きないので、テストシーンの材質次第で気付けない。
+    //
+    // alpha の下限 0.002 のとき `PI * d * d` は 5.03e-11 なので、
+    // 1e-12 なら余裕 50 倍で素通りし、alpha = 0 の退化だけを守れる。
+    return a2 / max(PI * d * d, 1e-12);
 }
 
 // 高さ相関 Smith 可視性（1/(4 NdotL NdotV) を内包）。
 float EasyPBR_V_SmithGGX(float NdotL, float NdotV, float alpha)
 {
     float a2 = alpha * alpha;
-    float ggxV = NdotL * sqrt(NdotV * NdotV * (1.0 - a2) + a2);
-    float ggxL = NdotV * sqrt(NdotL * NdotL * (1.0 - a2) + a2);
+
+    // **sqrt の中を負にしないこと。** NdotL / NdotV は呼び出し側で saturate 済みだが、
+    // alpha が 1 を超えると (1 - a2) が負になり sqrt が NaN を返す。
+    // alpha = perceptualRoughness² なので通常は 1 以下だが、守りは式の中に置く。
+    float s = max(1.0 - a2, 0.0);
+
+    float ggxV = NdotL * sqrt(NdotV * NdotV * s + a2);
+    float ggxL = NdotV * sqrt(NdotL * NdotL * s + a2);
     return 0.5 / max(ggxV + ggxL, 1e-5);
 }
 

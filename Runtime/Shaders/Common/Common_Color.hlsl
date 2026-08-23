@@ -7,21 +7,30 @@
 #ifndef EASYPBR_COMMON_COLOR_INCLUDED
 #define EASYPBR_COMMON_COLOR_INCLUDED
 
-half3 RgbToHsv(half3 c)
+// EasyToon Idol の実装へ引き上げた（T-340 逆輸入）。変更点は 2 つ:
+//  1. `+ e` の下駄 → `max(x, e)` の**下限**。下駄は分母を常にずらすので
+//     結果へ一様に混入する。色は 0 以上で分母は負にならないため、下限で
+//     退化（真っ黒・無彩色）だけを守るのが正しい形。
+//  2. half → float。half では 1e-10 が**アンダーフローして実質 0** になり、
+//     下駄そのものが消えて無彩色でゼロ除算になりうる（half の最小正規値は
+//     約 6.1e-5）。呼び出し側の half3 とは暗黙変換で互換。
+// 名前に EasyPBR_ を付けるのは、URP 本体（Color.hlsl）の float3 RgbToHsv と
+// 完全一致で衝突するため（half3 だった頃はオーバーロードで共存できていた）。
+float3 EasyPBR_RgbToHsv(float3 c)
 {
-    half4 K = half4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
-    half4 p = lerp(half4(c.bg, K.wz), half4(c.gb, K.xy), step(c.b, c.g));
-    half4 q = lerp(half4(p.xyw, c.r), half4(c.r, p.yzx), step(p.x, c.r));
-    float d = q.x - min(q.w, q.y);
-    float e = 1.0e-10;
-    return half3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
+    float4 K = float4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+    float4 p = lerp(float4(c.bg, K.wz), float4(c.gb, K.xy), step(c.b, c.g));
+    float4 q = lerp(float4(p.xyw, c.r), float4(c.r, p.yzx), step(p.x, c.r));
+    float  d = q.x - min(q.w, q.y);
+    return float3(abs(q.z + (q.w - q.y) / max(6.0 * d, 1e-10)),
+                  d / max(q.x, 1e-10), q.x);
 }
 
-half3 HsvToRgb(half3 c)
+float3 EasyPBR_HsvToRgb(float3 c)
 {
-    half4 K = half4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
-    half3 p = abs(frac(c.xxx + K.xyz) * 6.0 - K.www);
-    return c.z * lerp(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+    float4 K = float4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+    float3 p = abs(frac(c.xxx + K.xyz) * 6.0 - K.www);
+    return c.z * lerp(K.xxx, saturate(p - K.xxx), c.y);
 }
 
 // iridescence（虹色）用の Hue -> RGB。
@@ -33,11 +42,11 @@ half3 HueToRGB(float hue)
 // 色相回転 / 彩度 / 明度のまとめてHSV補正。
 half3 ApplyColorCorrection(half3 color, half hueShift, half saturation, half valueMulti)
 {
-    half3 hsv = RgbToHsv(color);
+    float3 hsv = EasyPBR_RgbToHsv(color);
     hsv.x = frac(hsv.x + hueShift);
     hsv.y = saturate(hsv.y * saturation);
     hsv.z = hsv.z * valueMulti;
-    return HsvToRgb(hsv);
+    return (half3)EasyPBR_HsvToRgb(hsv);
 }
 
 // -----------------------------------------------------------------------------

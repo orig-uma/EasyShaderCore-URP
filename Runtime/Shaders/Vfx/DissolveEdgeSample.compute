@@ -1,0 +1,139 @@
+// =============================================================================
+//  DissolveEdgeSample.compute
+// -----------------------------------------------------------------------------
+//  スキニング済み頂点バッファ（ByteAddressBuffer）を GPU 上で直接走査し、
+//  Dissolve（消失）の「エッジ帯（最前線）」に乗る頂点だけを AppendStructuredBuffer
+//  へ書き出す。CPU readback は行わない（件数は CopyCount で 4byte バッファへ）。
+//
+//  Dissolve のフィールド式は EasyShaderCore Common/Effects/Fx_Dissolve.hlsl と、
+//  利用側（easypbr DollEffects.hlsl / easytoon IdolDissolve.hlsl）の
+//  ノイズ・グラデーション計算を厳密に再現している。両者はロジック同一。
+//
+//  想定頂点フォーマット: position / normal / uv0 はいずれも Float32（VRM 等の
+//  一般的なキャラメッシュ）。異フォーマットは v1 では非対応（README/Doc 参照）。
+// =============================================================================
+#pragma kernel CSMain
+
+// エッジ点の出力レイアウト（C# DissolveEdgePoint / VFXType と厳密一致：32 bytes）。
+struct DissolveEdgePoint
+{
+    float3 positionWS;   // ワールド座標
+    float3 normalWS;     // ワールド法線
+    float  edgeFactor;   // 0..1（最前線=1）。VFX 側の色/寿命の重みに使える
+    float  _pad;         // 16byte 整列のためのパディング
+};
+
+// --- 入力（スキン済み頂点）。SkinnedMeshRenderer.GetVertexBuffer() を Raw で束ねる ---
+ByteAddressBuffer _PositionBuffer;   // position + normal（スキン済み・メッシュ空間）
+ByteAddressBuffer _UVBuffer;         // uv0（スキンで不変なので sharedMesh から）
+
+AppendStructuredBuffer<DissolveEdgePoint> _EdgePoints;
+
+// ノイズテクスチャ。sampler は名前規約でリニア・リピートを生成。
+Texture2D<float4> _DissolveTex;
+SamplerState sampler_linear_repeat;
+
+// ComputeShader.SetInt / SetFloat / SetMatrix で名前バインドする定数（loose uniform）。
+uint  _VertexCount;      // 総頂点数
+uint  _SampleStride;     // 間引きストライド（>=1）
+uint  _PositionStride;   // スキン済みバッファのストライド(byte)
+uint  _PositionOffset;   // position の byte オフセット
+uint  _NormalOffset;     // normal の byte オフセット
+uint  _UVStride;         // UV ストリームのストライド(byte)
+uint  _UVOffset;         // uv0 の byte オフセット
+
+float4x4 _LocalToWorld;  // メッシュ空間→ワールド
+
+// Dissolve プロパティ（Doll/Idol と同名・同義）
+float _DissolveAmount;        // 0..1 進行度
+float _DissolveType;          // 0=None(UVノイズ), 1=WorldY(三平面), 2=LocalY
+float _DissolveInvert;        // >0.5 で符号反転
+float _DissolveStartY;        // 軸グラデ開始
+float _DissolveEndY;          // 軸グラデ終了
+float _DissolveNoiseScale;    // ノイズ Tiling
+float _DissolveNoiseStrength; // ノイズ寄与
+float _DissolveEdgeWidth;     // エッジ帯幅
+float _DissolveEdgeStep;      // >0.5 で Toon 調の階調エッジ
+
+// 三平面投影ノイズ（DollEffects/IdolDissolve の WorldY と同一式）。
+float SampleTriplanarNoise(float3 positionWS, float3 normalWS)
+{
+    float3 blendWeights = abs(normalWS);
+    blendWeights /= (blendWeights.x + blendWeights.y + blendWeights.z + 0.0001);
+    float minW = min(blendWeights.x, min(blendWeights.y, blendWeights.z));
+    blendWeights = max(blendWeights - minW, 0.0);
+    blendWeights /= (blendWeights.x + blendWeights.y + blendWeights.z + 0.0001);
+
+    float noiseX = 0.0, noiseY = 0.0, noiseZ = 0.0;
+    if (blendWeights.x > 0.0) noiseX = _DissolveTex.SampleLevel(sampler_linear_repeat, positionWS.zy * _DissolveNoiseScale, 0).r;
+    if (blendWeights.y > 0.0) noiseY = _DissolveTex.SampleLevel(sampler_linear_repeat, positionWS.xz * _DissolveNoiseScale, 0).r;
+    if (blendWeights.z > 0.0) noiseZ = _DissolveTex.SampleLevel(sampler_linear_repeat, positionWS.xy * _DissolveNoiseScale, 0).r;
+
+    return noiseX * blendWeights.x + noiseY * blendWeights.y + noiseZ * blendWeights.z;
+}
+
+[numthreads(64, 1, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    uint vid = id.x * _SampleStride;
+    if (vid >= _VertexCount) return;
+
+    // --- 頂点属性のロード（Float32 前提） ---
+    uint posBase = vid * _PositionStride + _PositionOffset;
+    uint nrmBase = vid * _PositionStride + _NormalOffset;
+    float3 positionOS = asfloat(_PositionBuffer.Load3(posBase));
+    float3 normalOS   = asfloat(_PositionBuffer.Load3(nrmBase));
+
+    uint uvBase = vid * _UVStride + _UVOffset;
+    float2 uv = asfloat(_UVBuffer.Load2(uvBase));
+
+    float3 positionWS = mul(_LocalToWorld, float4(positionOS, 1.0)).xyz;
+    float3 normalWS   = normalize(mul((float3x3)_LocalToWorld, normalOS));
+
+    // --- Dissolve フィールド（Doll/Idol と厳密一致） ---
+    bool isNoneType = (_DissolveType < 0.5);
+
+    float dissolveNoise = 0.5;
+    float dissolveGrad  = 0.5;
+    if (_DissolveType > 1.5) // 2=LocalY
+    {
+        dissolveNoise = _DissolveTex.SampleLevel(sampler_linear_repeat, uv * _DissolveNoiseScale, 0).r;
+        dissolveGrad  = saturate((positionOS.y - _DissolveStartY) / (_DissolveEndY - _DissolveStartY + 0.0001));
+    }
+    else if (_DissolveType > 0.5) // 1=WorldY
+    {
+        dissolveNoise = SampleTriplanarNoise(positionWS, normalWS);
+        dissolveGrad  = saturate((positionWS.y - _DissolveStartY) / (_DissolveEndY - _DissolveStartY + 0.0001));
+    }
+    else // 0=None: UV ノイズのみ
+    {
+        dissolveNoise = _DissolveTex.SampleLevel(sampler_linear_repeat, uv * _DissolveNoiseScale, 0).r;
+    }
+
+    // Fx_Dissolve.hlsl と同一のフィールド算出。
+    float dissolveVal = isNoneType
+        ? dissolveNoise
+        : dissolveGrad + (dissolveNoise - 0.5) * _DissolveNoiseStrength;
+
+    float dMin = isNoneType ? 0.0 : -0.5 * _DissolveNoiseStrength;
+    float dMax = isNoneType ? 1.0 :  1.0 + 0.5 * _DissolveNoiseStrength;
+
+    float adjustedAmount = lerp(dMin - _DissolveEdgeWidth - 0.01, dMax + _DissolveEdgeWidth + 0.01, _DissolveAmount);
+    float clipVal = dissolveVal - adjustedAmount;
+    clipVal *= lerp(1.0, -1.0, saturate(_DissolveInvert));
+
+    // shader の clip(clipVal) は clipVal<0 を破棄。エッジ帯は 0<=clipVal<=edgeWidth。
+    // この帯（消失の最前線）に乗る頂点だけを採用する。
+    if (clipVal < 0.0 || clipVal > _DissolveEdgeWidth) return;
+
+    float edgeFactor = 1.0 - smoothstep(0.0, _DissolveEdgeWidth + 0.0001, clipVal);
+    if (_DissolveEdgeStep > 0.5)
+        edgeFactor = ceil(edgeFactor * 2.0) / 2.0 * step(0.01, edgeFactor);
+
+    DissolveEdgePoint p;
+    p.positionWS = positionWS;
+    p.normalWS   = normalWS;
+    p.edgeFactor = edgeFactor;
+    p._pad       = 0.0;
+    _EdgePoints.Append(p);
+}

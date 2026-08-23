@@ -1,0 +1,28 @@
+{
+    "name": "Origuma.EasyShaderCore.Runtime",
+    "rootNamespace": "Origuma.EasyShaderCore",
+    "references": [
+        "Unity.VisualEffectGraph.Runtime",
+        "Unity.Timeline"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [
+        {
+            "name": "com.unity.visualeffectgraph",
+            "expression": "",
+            "define": "ORIGUMA_VFXGRAPH"
+        },
+        {
+            "name": "com.unity.timeline",
+            "expression": "",
+            "define": "ORIGUMA_TIMELINE"
+        }
+    ],
+    "noEngineReferences": false
+}
