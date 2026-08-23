@@ -34,7 +34,7 @@
 // SAMPLER(sampler_PointClamp);
 
 // ブロッカー探索: 平均遮蔽深度からペナンブラ幅を動的算出する。
-bool EasyPBR_FindBlocker(float2 baseUV, float receiverZ, float2 texel, float phi,
+bool EasyPBR_FindBlocker(float2 baseUV, float receiverZ, float2 texel, float2 phiSC,
                          float searchRadius, out float avgBlockerZ)
 {
     float sumZ = 0.0;
@@ -42,7 +42,7 @@ bool EasyPBR_FindBlocker(float2 baseUV, float receiverZ, float2 texel, float phi
     UNITY_UNROLL
     for (int i = 0; i < EASYPBR_SHADOW_TAPS; i++)
     {
-        float2 o = VogelDisk(i, EASYPBR_SHADOW_TAPS, phi) * texel * searchRadius;
+        float2 o = VogelDisk(i, EASYPBR_SHADOW_TAPS, phiSC) * texel * searchRadius;
         float  z = SAMPLE_TEXTURE2D_LOD(_MainLightShadowmapTexture, sampler_PointClamp,
                                         baseUV + o, 0).r;
     #if UNITY_REVERSED_Z
@@ -76,7 +76,11 @@ half EasyPBR_SampleMainShadowHQ(float3 positionWS, float3 normalWS, float NdotL,
 
     float4 coord = TransformWorldToShadowCoord(offsetPos);
     float2 texel = _MainLightShadowmapSize.xy;
-    float  phi   = IGN(screenPix) * TWO_PI;   // 毎ピクセル回転（スクリーン安定）
+    // 毎ピクセル回転（スクリーン安定）。sincos は位相ごとに 1 回だけ ──
+    // タップ側は回転版 VogelDisk で当てるので、UNROLL 展開後のループから
+    // 実行時 sincos が消える（EasyToon Idol からの逆輸入。T-340）。
+    float2 phiSC;
+    sincos(IGN(screenPix) * TWO_PI, phiSC.x, phiSC.y);
 
     float radius = 1.0 + softness * 6.0;      // ペナンブラ幅（texel）※Vogel時のみ使用
 
@@ -104,7 +108,7 @@ half EasyPBR_SampleMainShadowHQ(float3 positionWS, float3 normalWS, float NdotL,
         if (contactHardening)
         {
             float avgBlockerZ;
-            if (!EasyPBR_FindBlocker(coord.xy, coord.z, texel, phi, radius * 1.5, avgBlockerZ))
+            if (!EasyPBR_FindBlocker(coord.xy, coord.z, texel, phiSC, radius * 1.5, avgBlockerZ))
                 return 1.0h; // 遮蔽物なし = 完全に光
             float penumbra = abs(coord.z - avgBlockerZ) / max(avgBlockerZ, 1e-4);
             radius = clamp(penumbra * radius * 8.0, 1.0, radius * 2.0);
@@ -114,7 +118,7 @@ half EasyPBR_SampleMainShadowHQ(float3 positionWS, float3 normalWS, float NdotL,
         UNITY_UNROLL
         for (int i = 0; i < EASYPBR_SHADOW_TAPS; i++)
         {
-            float2 o = VogelDisk(i, EASYPBR_SHADOW_TAPS, phi) * texel * radius;
+            float2 o = VogelDisk(i, EASYPBR_SHADOW_TAPS, phiSC) * texel * radius;
             atten += SAMPLE_TEXTURE2D_SHADOW(_MainLightShadowmapTexture,
                                              sampler_LinearClampCompare,
                                              float3(coord.xy + o, coord.z));

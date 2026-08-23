@@ -26,7 +26,20 @@ namespace Origuma.EasyShaderCore.Editor
                                      float clearValue = 1.0f,
                                      float clearValueG = -1f,
                                      float clearValueB = -1f,
-                                     float clearValueA = -1f)
+                                     float clearValueA = -1f,
+                                     // 遮蔽コライダーを「編集中マテリアルのサブメッシュだけ」から
+                                     // 作る（T-355）。VRM 等の統合メッシュでは 1 つの Mesh に
+                                     // 睫毛・眉など**別マテリアルの浮きジオメトリ**が同居しており、
+                                     // メッシュ全体をコライダーにすると顔の頂点からのレイが
+                                     // それらに当たって「正面からでも影」＝恒久影が焼き込まれる。
+                                     // AO / Thickness のように全パーツを遮蔽物にしたい Baker は
+                                     // false のまま（従来どおりメッシュ全体）。
+                                     bool occluderSubmeshesOnly = false,
+                                     // ラスタライズ直後（ダイレート・ブラー前）の画像加工フック。
+                                     // 頂点補間だけでは作れない画像空間の処理（距離場ブレンド等）を
+                                     // Baker 側が差し込むためのもの。covered は UV 被覆（true=三角形が
+                                     // 書いた texel）。返した配列がそのまま保存対象になる。
+                                     Func<Color32[], bool[], int, Color32[]> postProcess = null)
         {
             if (root == null || material == null)
             {
@@ -43,6 +56,7 @@ namespace Origuma.EasyShaderCore.Editor
 
             var prevBackface = Physics.queriesHitBackfaces;
             var temps = new List<GameObject>();
+            var tempColliderMeshes = new List<Mesh>();
             var usable = new List<Renderer>();
             var meshes = new List<Mesh>();
             var tempFlags = new List<bool>();
@@ -73,7 +87,16 @@ namespace Origuma.EasyShaderCore.Editor
                         go.transform.SetPositionAndRotation(r.transform.position, r.transform.rotation);
                         go.transform.localScale = r.transform.lossyScale;
                         var col = go.AddComponent<MeshCollider>();
-                        col.sharedMesh = meshes[i];
+                        if (occluderSubmeshesOnly)
+                        {
+                            var sub = BuildSubmeshOnlyMesh(meshes[i], usable[i], material);
+                            tempColliderMeshes.Add(sub);
+                            col.sharedMesh = sub;
+                        }
+                        else
+                        {
+                            col.sharedMesh = meshes[i];
+                        }
                         temps.Add(go);
                     }
                     Physics.SyncTransforms();
@@ -106,6 +129,8 @@ namespace Origuma.EasyShaderCore.Editor
                     RasterizeInto(px, covered, meshes[i], vr, vg, vb, va, res, subs);
                 }
 
+                if (postProcess != null) px = postProcess(px, covered, res);
+
                 EditorUtility.DisplayProgressBar("EasyPBR Baker", "仕上げ中...", 0.85f);
                 var tex = new Texture2D(res, res, TextureFormat.RGBA32, false, true);
                 tex.SetPixels32(px);
@@ -123,10 +148,28 @@ namespace Origuma.EasyShaderCore.Editor
             {
                 Physics.queriesHitBackfaces = prevBackface;
                 foreach (var go in temps) if (go != null) UnityEngine.Object.DestroyImmediate(go);
+                foreach (var m in tempColliderMeshes) if (m != null) UnityEngine.Object.DestroyImmediate(m);
                 for (var i = 0; i < meshes.Count; i++)
                     if (tempFlags[i] && meshes[i] != null) UnityEngine.Object.DestroyImmediate(meshes[i]);
                 EditorUtility.ClearProgressBar();
             }
+        }
+
+        /// <summary>
+        /// 対象マテリアルのサブメッシュだけを三角形に持つ一時メッシュ（コライダー用）。
+        /// 頂点配列は共有元をそのまま使う（コライダーは未参照頂点を無視する）。
+        /// </summary>
+        private static Mesh BuildSubmeshOnlyMesh(Mesh mesh, Renderer renderer, Material material)
+        {
+            var subs = ResolveSubmeshes(renderer, material, mesh);
+            var tris = new List<int>();
+            foreach (var s in subs) tris.AddRange(mesh.GetTriangles(s));
+            var m = new Mesh { name = "~bakeOccluder" };
+            // 65k 頂点超の統合メッシュに備える（頂点は元メッシュのままコピーするため）。
+            m.indexFormat = mesh.indexFormat;
+            m.vertices = mesh.vertices;
+            m.triangles = tris.ToArray();
+            return m;
         }
 
         private static List<Renderer> GatherRenderers(GameObject root, Material material)
@@ -176,6 +219,55 @@ namespace Origuma.EasyShaderCore.Editor
             if (renderer is SkinnedMeshRenderer smr && smr.sharedMesh != null) return smr.sharedMesh.name;
             var mf = renderer.GetComponent<MeshFilter>();
             return mf != null && mf.sharedMesh != null ? mf.sharedMesh.name : renderer.name;
+        }
+
+        /// <summary>
+        /// 位置で頂点を溶接し、頂点ごとのグループ番号を返す（量子化 1e-5 m）。
+        /// UV 継ぎ目・硬エッジ・ミラーの中央線で分割された頂点は同一点として扱う。
+        /// ShadeNormal と Face SDF（T-372）が共有する ── 溶接の量子化や
+        /// キーの作り方が 2 か所で食い違うと、片方だけ継ぎ目が残る。
+        /// </summary>
+        internal static int[] WeldByPosition(Vector3[] verts, out int groupCount)
+        {
+            var n = verts.Length;
+            var groupOf = new int[n];
+            var keyToGroup = new Dictionary<Vector3Int, int>(n);
+            groupCount = 0;
+            for (var i = 0; i < n; i++)
+            {
+                var key = new Vector3Int(
+                    Mathf.RoundToInt(verts[i].x * 1e5f),
+                    Mathf.RoundToInt(verts[i].y * 1e5f),
+                    Mathf.RoundToInt(verts[i].z * 1e5f));
+                if (!keyToGroup.TryGetValue(key, out var g))
+                {
+                    g = groupCount++;
+                    keyToGroup.Add(key, g);
+                }
+                groupOf[i] = g;
+            }
+            return groupOf;
+        }
+
+        /// <summary>
+        /// 位置溶接した頂点法線（頂点ごと）。同じ位置の頂点の法線を平均するので、
+        /// 分割された継ぎ目の硬エッジが消える。法線が無いメッシュは fallback。
+        /// </summary>
+        internal static Vector3[] WeldedNormals(Vector3[] verts, Vector3[] norms, Vector3 fallback)
+        {
+            var n = verts.Length;
+            var groupOf = WeldByPosition(verts, out var groupCount);
+            var sum = new Vector3[groupCount];
+            var hasN = norms != null && norms.Length == n;
+            for (var i = 0; i < n; i++)
+                sum[groupOf[i]] += hasN ? norms[i] : fallback;
+            var result = new Vector3[n];
+            for (var i = 0; i < n; i++)
+            {
+                var s = sum[groupOf[i]];
+                result[i] = s.sqrMagnitude > 1e-12f ? s.normalized : fallback;
+            }
+            return result;
         }
 
         internal static Vector3[] BuildHemisphere(int count)
@@ -302,27 +394,44 @@ namespace Origuma.EasyShaderCore.Editor
             _coverage = covered;
         }
 
+        // **位置溶接したグラフの上で平滑化する（T-373）。**
+        // Unity は UV 継ぎ目で頂点を複製する。素の三角形隣接で平均すると、継ぎ目の
+        // 左のコピーは左側の隣接とだけ、右のコピーは右側の隣接とだけ平均される
+        // ── 同じ点だった 2 つの値が**勾配に比例して割れる**。顔 SDF では UV 中央
+        // （ミラーの継ぎ目）に額で 0.05・鼻で 0.16 の段差が焼き込まれ、80〜90 度の
+        // 光で額から顎までの硬い割線として出た（法線は連続だったので、原因は
+        // 入力ではなく**この平滑化**）。AO / Cavity / Thickness の継ぎ目の筋も同根。
         private static void SmoothVertexScalar(Mesh mesh, float[] v, int iterations)
         {
             if (iterations <= 0) return;
             var n = v.Length;
             var tris = mesh.triangles;
+            var groupOf = WeldByPosition(mesh.vertices, out var groupCount);
+
+            // グループ値 = 所属コピーの平均（溶接した時点で継ぎ目の割れは消える）
+            var gv = new float[groupCount];
+            var gn = new int[groupCount];
+            for (var i = 0; i < n; i++) { gv[groupOf[i]] += v[i]; gn[groupOf[i]]++; }
+            for (var g = 0; g < groupCount; g++) gv[g] /= Mathf.Max(gn[g], 1);
 
             for (var it = 0; it < iterations; it++)
             {
-                var sum = new float[n];
-                var count = new int[n];
-                for (var i = 0; i < n; i++) { sum[i] = v[i]; count[i] = 1; }
+                var sum = new float[groupCount];
+                var count = new int[groupCount];
+                for (var g = 0; g < groupCount; g++) { sum[g] = gv[g]; count[g] = 1; }
 
+                // 重みは従来どおり「三角形ごとに他 2 頂点を足す」（共有辺は 2 回数える）。
+                // 継ぎ目の辺は両側の三角形から同じグループへ積まれる＝溶接メッシュと等価。
                 for (var t = 0; t < tris.Length; t += 3)
                 {
-                    int a = tris[t], b = tris[t + 1], c = tris[t + 2];
-                    sum[a] += v[b] + v[c]; count[a] += 2;
-                    sum[b] += v[a] + v[c]; count[b] += 2;
-                    sum[c] += v[a] + v[b]; count[c] += 2;
+                    int a = groupOf[tris[t]], b = groupOf[tris[t + 1]], c = groupOf[tris[t + 2]];
+                    sum[a] += gv[b] + gv[c]; count[a] += 2;
+                    sum[b] += gv[a] + gv[c]; count[b] += 2;
+                    sum[c] += gv[a] + gv[b]; count[c] += 2;
                 }
-                for (var i = 0; i < n; i++) v[i] = sum[i] / count[i];
+                for (var g = 0; g < groupCount; g++) gv[g] = sum[g] / count[g];
             }
+            for (var i = 0; i < n; i++) v[i] = gv[groupOf[i]];
         }
 
         private static void BlurTexture(Texture2D tex, int radius)
