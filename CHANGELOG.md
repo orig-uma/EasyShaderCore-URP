@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-08-24
+
+### Changed
+
+- README の「含まれるもの」を実態に合わせた: `BlackOutController` / `FeatureSetup*`（Renderer Feature 追加ウィンドウの基底と未導入ガード）/ `MaterialReplacerWindow` を追記し、Face SDF ベイカーが 4ch（Doll）と 16bit 1ch（Idol）の両形式・距離場ブレンド・落ち影レイキャストに対応すること（仕様 `FACE_SDF_BAKING.md`）を明記。コードの変更は無い。
+
 ## [0.3.0] - 2026-08-23
 
 ### Changed
