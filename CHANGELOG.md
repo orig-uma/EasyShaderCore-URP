@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-09-16
+
+### Added
+
+- **顔 SDF プロキシの形のバリエーション**（`EasyPbrFaceSdfBaker.Settings.proxyTaper / proxyFlatten / proxyDetail / proxyDetailAngle`）。楕円体を顔のローカル軸で変形する: `proxyTaper` は卵型（上で広く顎で細く）、`proxyFlatten` は前半分を平らにする超楕円（1 でほぼ円盤。後ろ半分は丸いまま、z = 0 で法線は連続）。法線は陰関数の勾配（中心差分）で取るので形を増やしても取り方は一つ。`proxyDetail` は「部分的にメッシュの法線」── メッシュの法線がプロキシから `proxyDetailAngle` 度以上ずれる場所（鼻・眉・唇）だけ実際の法線へ戻し、頬・額はプロキシのまま。既定はすべて 0 で従来の楕円体と同じ。後方互換。
+
+## [0.3.2] - 2026-09-16
+
+### Added
+
+- **顔 SDF ベイカーのプロキシ法線**（`EasyPbrFaceSdfBaker.Settings.proxyMode / proxyCenterWS / proxyRadii / proxyMesh / proxyMatrix / proxyBlend`）。顔メッシュの法線の代わりに、頭に合わせた楕円体（解析）またはプロキシメッシュ（中心からのレイの交点の補間法線）で影の遷移角を求める。ローポリの顔でも等値線が滑らかになる。UV は顔メッシュのものをそのまま使うので UV 合わせは不要。`proxyBlend` でメッシュの法線と混ぜられる（鼻の影を少し残す）。中心・半径は既定で、焼く頂点に最小二乗の楕円体を当てて自動で決める（残差上位 15% を外して 2 回。首・口の中に引きずられない）。既定は従来どおり（`proxyMode = 0`）。後方互換。
+
 ## [0.3.1] - 2026-08-24
 
 ### Changed
