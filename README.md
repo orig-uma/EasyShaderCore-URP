@@ -26,13 +26,13 @@ EasyPBR（`com.origuma.easypbr-urp`）/ EasyToon（`com.origuma.easytoon-urp`）
 手動で入れる場合は `Window > Package Manager > + > Add package from git URL...` に以下を入力する。
 
 ```
-https://github.com/orig-uma/EasyShaderCore.git
+https://github.com/orig-uma/EasyShaderCore-URP.git
 ```
 
 特定バージョンを指定する場合:
 
 ```
-https://github.com/orig-uma/EasyShaderCore.git#v0.3.1
+https://github.com/orig-uma/EasyShaderCore-URP.git#v0.3.3
 ```
 
 HLSL は `Packages/com.origuma.easyshader-core/Runtime/Shaders/Common/...` を絶対パスで include する。
@@ -45,7 +45,7 @@ HLSL は `Packages/com.origuma.easyshader-core/Runtime/Shaders/Common/...` を�
 ## 設計メモ
 
 - 利用側パッケージ（EasyPBR / EasyToon）は package.json に本パッケージを**依存宣言しない**。UPM は git 依存をレジストリ解決できず、宣言すると利用側パッケージの git URL インストール自体が拒否されるため。
-- 代わりに各利用側の Installer がタグ固定 URL（例: `https://github.com/orig-uma/EasyShaderCore.git#v0.3.1`）で自動導入する。リリース時に本パッケージへタグ `v0.x.x` を打ち、利用側のピン留め URL を更新する運用。
+- 代わりに各利用側の Installer がタグ固定 URL（例: `https://github.com/orig-uma/EasyShaderCore-URP.git#v0.3.3`）で自動導入する。リリース時に本パッケージへタグ `v0.x.x` を打ち、利用側のピン留め URL を更新する運用。
 
 ## ライセンス
 
