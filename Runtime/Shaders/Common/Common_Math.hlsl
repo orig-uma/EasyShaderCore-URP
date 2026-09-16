@@ -16,6 +16,15 @@ float Hash21(float2 p)
     return frac((p.x + p.y) * p.x);
 }
 
+// 2D → 4 値を一度に。Glitter の近傍探索で 1 セルに 3〜5 回呼んでいた Hash21 を 1 回に
+// まとめるためのもの（0.3.4）。4 値は互いにほぼ無相関（別の乗数と巡回で作る）。
+float4 Hash24(float2 p)
+{
+    float4 q = frac(float4(p.xyxy) * float4(443.897, 441.423, 437.195, 444.129));
+    q += dot(q, q.wzxy + 19.19);
+    return frac((q.xxyz + q.yzzw) * q.zwxy);
+}
+
 // Interleaved Gradient Noise（テクスチャ不要・ALUのみ・面の上で泳がない）。
 // 旧 Doll_IGN。ディザ / PCF回転 phi 等に使用。
 float IGN(float2 pix)
