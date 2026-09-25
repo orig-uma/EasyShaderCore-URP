@@ -17,6 +17,38 @@ namespace Origuma.EasyShaderCore.Editor
     {
         internal const int BakeLayer = 31; // レイキャスト隔離用（通常未使用の最上位）
 
+        // ------------------------------------------------------------------
+        //  材質グループ（0.3.5）
+        // ------------------------------------------------------------------
+        // 同じ UV アトラスを共有する材質は、焼いたマップも 1 枚を共有できる。材質ごとに焼くと
+        // 各テクスチャの大半が空白のまま材質の数だけ増える（46 材質 × 種類 × 非圧縮 1024² で約 1 GB）。
+        // GroupScope の間の RunBake は「グループのどれかの材質を使うメッシュ・サブメッシュ」を
+        // 対象にし、保存名に材質名ではなくグループ名を使う。各ベイカーの呼び出し口は変えない。
+        private static Material[] s_group;
+        private static string s_groupName;
+        /// <summary>直前の RunBake で、グループ内の別の材質どうしの UV が重なっていた texel の割合（0..1）。</summary>
+        public static float LastGroupOverlap { get; private set; }
+
+        private sealed class GroupScopeToken : IDisposable
+        {
+            public void Dispose() { s_group = null; s_groupName = null; }
+        }
+
+        /// <summary>
+        /// using で囲んだ間の Bake を、materials 全体を対象にした 1 枚にする。
+        /// **UV が重ならない材質どうし（同じアトラスを共有するもの）だけをまとめること。**
+        /// 重なりは LastGroupOverlap で分かる。
+        /// </summary>
+        public static IDisposable GroupScope(Material[] materials, string groupName)
+        {
+            s_group = (materials != null && materials.Length > 1) ? materials : null;
+            s_groupName = s_group != null ? groupName : null;
+            return new GroupScopeToken();
+        }
+
+        private static bool InGroup(Material m, Material single)
+            => s_group != null ? Array.IndexOf(s_group, m) >= 0 : m == single;
+
         internal static bool RunBake(GameObject root, Material material, int res, int smooth, int dilate, int blur,
                                      string suffix, string slot, string strengthProp, bool needsCollider,
                                      Func<Renderer, Mesh, float[]> computeR,
@@ -110,6 +142,8 @@ namespace Origuma.EasyShaderCore.Editor
                 var clearPx = new Color32(clearR, clearG, clearB, clearA);
                 for (var i = 0; i < px.Length; i++) px[i] = clearPx;
                 var covered = new bool[res * res];
+                var ownerOf = s_group != null ? new int[res * res] : null;   // texel を最後に書いた材質
+                long writtenTexels = 0, overlapTexels = 0;
 
                 for (var i = 0; i < usable.Count; i++)
                 {
@@ -125,9 +159,36 @@ namespace Origuma.EasyShaderCore.Editor
                     if (computeB != null) { vb = computeB(usable[i], meshes[i]); SmoothVertexScalar(meshes[i], vb, smooth); }
                     if (computeA != null) { va = computeA(usable[i], meshes[i]); SmoothVertexScalar(meshes[i], va, smooth); }
 
-                    var subs = ResolveSubmeshes(usable[i], material, meshes[i]);
-                    RasterizeInto(px, covered, meshes[i], vr, vg, vb, va, res, subs);
+                    if (s_group == null)
+                    {
+                        var subs = ResolveSubmeshes(usable[i], material, meshes[i]);
+                        RasterizeInto(px, covered, meshes[i], vr, vg, vb, va, res, subs);
+                    }
+                    else
+                    {
+                        // 材質ごとに別の被覆へ描き、既に他の材質が書いた texel と重なった数を数える。
+                        // 同じアトラスを共有していれば重ならない ── 重なるならグループの選び方が誤り。
+                        var rmats = usable[i].sharedMaterials;
+                        for (var sub = 0; sub < meshes[i].subMeshCount && sub < rmats.Length; sub++)
+                        {
+                            if (rmats[sub] == null || Array.IndexOf(s_group, rmats[sub]) < 0) continue;
+                            var part = new bool[res * res];
+                            RasterizeInto(px, part, meshes[i], vr, vg, vb, va, res, new[] { sub });
+                            for (var t = 0; t < part.Length; t++)
+                            {
+                                if (!part[t]) continue;
+                                writtenTexels++;
+                                if (covered[t] && ownerOf[t] != rmats[sub].GetInstanceID()) overlapTexels++;
+                                covered[t] = true; ownerOf[t] = rmats[sub].GetInstanceID();
+                            }
+                        }
+                    }
                 }
+                LastGroupOverlap = writtenTexels > 0 ? (float)overlapTexels / writtenTexels : 0f;
+                if (s_group != null && LastGroupOverlap > 0.02f)
+                    Debug.LogWarning($"[EasyPBR Baker] グループ '{s_groupName}' の材質どうしで UV が "
+                                   + $"{LastGroupOverlap * 100f:0.#}% 重なっています。同じアトラスを共有していない材質が"
+                                   + "混ざっている可能性があります（重なった場所は後から描いた材質の値になります）。");
 
                 if (postProcess != null) px = postProcess(px, covered, res);
 
@@ -178,7 +239,8 @@ namespace Origuma.EasyShaderCore.Editor
             foreach (var r in root.GetComponentsInChildren<Renderer>(true))
             {
                 if (!(r is MeshRenderer) && !(r is SkinnedMeshRenderer)) continue;
-                if (Array.IndexOf(r.sharedMaterials, material) >= 0) list.Add(r);
+                foreach (var sm in r.sharedMaterials)
+                    if (sm != null && InGroup(sm, material)) { list.Add(r); break; }
             }
             return list;
         }
@@ -208,7 +270,7 @@ namespace Origuma.EasyShaderCore.Editor
             var mats = renderer.sharedMaterials;
             var list = new List<int>();
             for (var i = 0; i < mesh.subMeshCount; i++)
-                if (i < mats.Length && mats[i] == material) list.Add(i);
+                if (i < mats.Length && mats[i] != null && InGroup(mats[i], material)) list.Add(i);
             if (list.Count == 0)
                 for (var i = 0; i < mesh.subMeshCount; i++) list.Add(i);
             return list.ToArray();
@@ -487,7 +549,8 @@ namespace Origuma.EasyShaderCore.Editor
             // 同名ファイルは上書き（連番で増やさない）。GUID が維持されるため、
             // アサイン済みの参照はそのまま新しい内容に更新される。
             // 以前の結果に戻したい場合は焼き直すか、バージョン管理で戻す。
-            var baseName = Sanitize($"{meshName}_{material.name}_{suffix}");
+            // グループのときは材質名の代わりにグループ名（同じ 1 枚を全材質が共有する）
+            var baseName = Sanitize($"{meshName}_{(s_groupName ?? material.name)}_{suffix}");
             var path = $"{bakedDir}/{baseName}.png";
 
             File.WriteAllBytes(path, tex.EncodeToPNG());
@@ -505,11 +568,15 @@ namespace Origuma.EasyShaderCore.Editor
             var imported = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
             if (imported == null) return false;
 
-            Undo.RecordObject(material, "Assign Baked Map");
-            if (slot != null && material.HasProperty(slot)) material.SetTexture(slot, imported);
-            if (strengthProp != null && material.HasProperty(strengthProp) && material.GetFloat(strengthProp) <= 0f)
-                material.SetFloat(strengthProp, 1f);
-            EditorUtility.SetDirty(material);
+            foreach (var target in s_group ?? new[] { material })
+            {
+                if (target == null) continue;
+                Undo.RecordObject(target, "Assign Baked Map");
+                if (slot != null && target.HasProperty(slot)) target.SetTexture(slot, imported);
+                if (strengthProp != null && target.HasProperty(strengthProp) && target.GetFloat(strengthProp) <= 0f)
+                    target.SetFloat(strengthProp, 1f);
+                EditorUtility.SetDirty(target);
+            }
 
             var assignNote = (slot != null && material.HasProperty(slot)) ? $"（{slot} に自動アサイン）" : "（保存のみ）";
             Debug.Log($"[EasyPBR Baker] {suffix} baked → {path} {assignNote}", imported);

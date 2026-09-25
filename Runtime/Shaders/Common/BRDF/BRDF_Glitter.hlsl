@@ -42,9 +42,11 @@ bool PrepareGlitter(
     float  invScale = rcp(scale);
 
     float  minDistSq = 999.0;
-    float2 bestId    = id;
-    float  bestRand1 = 0.0, bestRand2 = 0.0;
+    float4 bestHash  = 0.0;   // x = 位置 u / y = 位置 v / z = 大きさ・傾き / w = 色相
 
+    // **1 セル 1 ハッシュ（0.3.4）。** 以前はセルごとに Hash21 を 3 回（位置 2 ＋ 間引き 1）、
+    // 最寄りセルにさらに 2 回で計 29 回呼んでいた。Hash24 で 4 値を一度に取り、間引きは
+    // その 4 値から作る（9 回）。粒の配置は以前と変わる（乱数列が違う）。
     UNITY_UNROLL
     for (int y = -1; y <= 1; y++)
     {
@@ -52,27 +54,26 @@ bool PrepareGlitter(
         for (int x = -1; x <= 1; x++)
         {
             float2 neighborId = id + float2(x, y);
+            float4 h = Hash24(neighborId);
 
-            float r4 = Hash21(neighborId + float2(98.76, 54.32));
-            float r1 = Hash21(neighborId);
-            float r2 = Hash21(neighborId + float2(45.67, 89.12));
-
-            float2 diff   = float2(x, y) + float2(r1, r2) - localUV;
+            float2 diff   = float2(x, y) + h.xy - localUV;
             float  distSq = dot(diff, diff);
+            // 間引き: 4 値の組み合わせから独立の 1 値を作る（z と w は後で別用途に使う）
+            float  r4 = frac(h.z * 7.13 + h.w * 3.71);
             distSq = (r4 >= sparsity) ? distSq : 999.0;
 
             if (distSq < minDistSq)
             {
                 minDistSq = distSq;
-                bestId    = neighborId;
-                bestRand1 = r1;
-                bestRand2 = r2;
+                bestHash  = h;
             }
         }
     }
 
-    float bestRand3 = Hash21(bestId + float2(12.34, 56.78));
-    float bestRand4 = Hash21(bestId + float2(33.21, 77.65));
+    float bestRand1 = bestHash.x;
+    float bestRand2 = bestHash.y;
+    float bestRand3 = bestHash.z;
+    float bestRand4 = bestHash.w;
 
     float absoluteDist  = sqrt(minDistSq) * invScale;
     float actualDotSize = dotSize * lerp(0.7, 1.0, bestRand3);
