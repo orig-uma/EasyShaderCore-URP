@@ -31,6 +31,12 @@ namespace Origuma.EasyShaderCore.Editor
             public bool  dfBlend;     // 距離場ブレンド整形（等値線を画像空間で丸め直す）
             public float dfSpread;    // 線の丸め半径（texel）。大きいほど滑らか・細部が消える
             public bool  pack16;      // 右光 1ch を R×256+G の 16bit で焼く（ミラー U 規約の 1ch 経路用）
+            // 0.3.6: pack16 と併用。上光スイープ（正面 → 真上 → 背面）も 16bit で焼き、
+            // B×256+A に詰める（RG = 横 / BA = 縦の 2ch 16bit）。横スイープは水平面内なので
+            // 光の仰角を知らない ── 頭が俯く・トップライトでは鼻下・唇・顎裏が「正面光」と
+            // 読まれて明るいまま残る。縦スイープはその仰角方向の遷移角を持つ。
+            // 下光（仰角 < 0）は焼かない: ランタイムは仰角 0 として読む（横だけで決まる）。
+            public bool  pack16Vertical;
 
             // ---- プロキシ法線（0.3.2）----
             // 顔メッシュの法線の代わりに、頭に合わせた楕円体やプロキシメッシュの法線で影の遷移角を
@@ -67,7 +73,7 @@ namespace Origuma.EasyShaderCore.Editor
             resolution = 1024, angleSteps = 90, ndotlThreshold = 0.0f,
             useCastShadow = false, castDistance = 0.15f, flipForward = false,
             xAxisTilt = 0f, smooth = 1, blur = 1, dilate = 4,
-            dfBlend = true, dfSpread = 4f, pack16 = false,
+            dfBlend = true, dfSpread = 4f, pack16 = false, pack16Vertical = false,
             proxyMode = 0, proxyCenterWS = Vector3.zero, proxyRadii = new Vector3(0.09f, 0.11f, 0.09f),
             proxyMesh = null, proxyMatrix = Matrix4x4.identity, proxyBlend = 1f,
             proxyAutoCenter = true, proxyAutoRadii = true,
@@ -294,6 +300,19 @@ namespace Origuma.EasyShaderCore.Editor
         public static bool Bake(GameObject root, Material material, Settings s)
         {
             PrepareProxy(s);
+            if (s.pack16 && s.pack16Vertical)
+            {
+                // 2ch 16bit: RG = 右光スイープ（1ch 経路と同じ）、BA = 上光スイープ。
+                // 縦は左右対称の前提が要らない（fwd-up 面内の 1 本で足りる）ので
+                // ミラーも無い。X Axis Tilt は横だけに掛かる（縦は仰角そのものを掃くため）。
+                return EasyPbrBakeCore.RunBake(root, material, s.resolution, s.smooth, 0, 0,
+                    "FaceSDF", "_FaceSDFMap", "_UseFaceSDF", needsCollider: true,
+                    (r, m) => SdfSweepAxis(r, m, s, Vector3.right, true),
+                    (r, m) => SdfSweepAxis(r, m, s, Vector3.up,    false),
+                    occluderSubmeshesOnly: true,
+                    postProcess: (px, cov, res) => PostProcess16x2(px, cov, res, s));
+            }
+
             if (s.pack16)
             {
                 // 1ch 16bit: 右光スイープのみ。左は「U をミラーして読む」規約
@@ -381,6 +400,32 @@ namespace Origuma.EasyShaderCore.Editor
                 // 閾値が約 0.7 度刻みの階段になり、ライトを回すと影の線がカクつく。
                 var u = (int)(Mathf.Clamp01(1f - f[i]) * 65535f + 0.5f);
                 outPx[i] = new Color32((byte)(u >> 8), (byte)(u & 0xFF), 0, 255);
+            }
+            return outPx;
+        }
+
+        /// <summary>
+        /// RG = 横（右光）/ BA = 縦（上光）の 2ch 16bit。どちらも 1ch 経路と同じ反転規約
+        /// （白 = 最後まで照らされる側）で格納する。ランタイムは横を R×256+G、縦を
+        /// B×256+A で読み、lit ⇔ sdf > 閾値 を軸ごとに評価して min で合成する。
+        /// 反転規約が横と違うと、縦だけ顎裏が「永遠に照らされる」と誤読される（T-354 と同型）。
+        /// </summary>
+        private static Color32[] PostProcess16x2(Color32[] px, bool[] covered, int res, Settings s)
+        {
+            var fh = ExtractChannel(px, 0);
+            var fv = ExtractChannel(px, 1);
+            DistanceFieldBlend(fh, covered, res, s.dfSpread, 0, 2);
+            DistanceFieldBlend(fv, covered, res, s.dfSpread, 1, 2);
+            BoxBlur(fh, res, s.blur);
+            BoxBlur(fv, res, s.blur);
+
+            var outPx = new Color32[px.Length];
+            for (var i = 0; i < fh.Length; i++)
+            {
+                var uh = (int)(Mathf.Clamp01(1f - fh[i]) * 65535f + 0.5f);
+                var uv = (int)(Mathf.Clamp01(1f - fv[i]) * 65535f + 0.5f);
+                outPx[i] = new Color32((byte)(uh >> 8), (byte)(uh & 0xFF),
+                                       (byte)(uv >> 8), (byte)(uv & 0xFF));
             }
             return outPx;
         }
