@@ -31,6 +31,13 @@ namespace Origuma.EasyShaderCore.Editor
             public bool  dfBlend;     // 距離場ブレンド整形（等値線を画像空間で丸め直す）
             public float dfSpread;    // 線の丸め半径（texel）。大きいほど滑らか・細部が消える
             public bool  pack16;      // 右光 1ch を R×256+G の 16bit で焼く（ミラー U 規約の 1ch 経路用）
+            // 0.3.6: pack16 と併用。縦スイープ 2 本（上: 正面 → 真上 → 背面 / 下: 正面 → 真下 → 背面）
+            // を B / A に 8bit ずつ詰める（RG = 横 16bit / B = 上 8bit / A = 下 8bit）。
+            // 横は水平面内なので光の仰角を知らない ── 頭が俯く・トップライト・下からの光で
+            // 鼻下・唇・顎裏が「正面光」と読まれる。縦は左右対称が無いので上下 2 本要る。
+            // 8bit でも**角度に線形**（th/180°）で格納するので刻みは一様 0.7°
+            // （横の 8bit が問題だったのは cos 空間で正面付近が 5° 刻みになるため）。
+            public bool  bakeVertical;
 
             // ---- プロキシ法線（0.3.2）----
             // 顔メッシュの法線の代わりに、頭に合わせた楕円体やプロキシメッシュの法線で影の遷移角を
@@ -67,7 +74,7 @@ namespace Origuma.EasyShaderCore.Editor
             resolution = 1024, angleSteps = 90, ndotlThreshold = 0.0f,
             useCastShadow = false, castDistance = 0.15f, flipForward = false,
             xAxisTilt = 0f, smooth = 1, blur = 1, dilate = 4,
-            dfBlend = true, dfSpread = 4f, pack16 = false,
+            dfBlend = true, dfSpread = 4f, pack16 = false, bakeVertical = false,
             proxyMode = 0, proxyCenterWS = Vector3.zero, proxyRadii = new Vector3(0.09f, 0.11f, 0.09f),
             proxyMesh = null, proxyMatrix = Matrix4x4.identity, proxyBlend = 1f,
             proxyAutoCenter = true, proxyAutoRadii = true,
@@ -294,6 +301,20 @@ namespace Origuma.EasyShaderCore.Editor
         public static bool Bake(GameObject root, Material material, Settings s)
         {
             PrepareProxy(s);
+            if (s.pack16 && s.bakeVertical)
+            {
+                // RG = 右光スイープ 16bit（1ch 経路と同じ）、B = 上光 8bit、A = 下光 8bit。
+                // 縦は左右対称の前提が要らない（fwd-up 面内）のでミラーは無い。
+                // X Axis Tilt は横だけに掛かる（縦は仰角そのものを掃くため）。
+                return EasyPbrBakeCore.RunBake(root, material, s.resolution, s.smooth, 0, 0,
+                    "FaceSDF", "_FaceSDFMap", "_UseFaceSDF", needsCollider: true,
+                    (r, m) => SdfSweepAxis(r, m, s, Vector3.right, true),
+                    (r, m) => SdfSweepAxis(r, m, s, Vector3.up,    false),
+                    (r, m) => SdfSweepAxis(r, m, s, Vector3.down,  false),
+                    occluderSubmeshesOnly: true,
+                    postProcess: (px, cov, res) => PostProcess16V(px, cov, res, s));
+            }
+
             if (s.pack16)
             {
                 // 1ch 16bit: 右光スイープのみ。左は「U をミラーして読む」規約
@@ -381,6 +402,43 @@ namespace Origuma.EasyShaderCore.Editor
                 // 閾値が約 0.7 度刻みの階段になり、ライトを回すと影の線がカクつく。
                 var u = (int)(Mathf.Clamp01(1f - f[i]) * 65535f + 0.5f);
                 outPx[i] = new Color32((byte)(u >> 8), (byte)(u & 0xFF), 0, 255);
+            }
+            return outPx;
+        }
+
+        /// <summary>
+        /// RG = 横（右光）16bit / B = 縦・上光 8bit / A = 縦・下光 8bit。
+        /// 横は 1ch 経路と同じ反転規約（cos 空間・白 = 最後まで照らされる）。
+        /// 縦は**角度に線形**: v = th / 180°（th = 影に入る掃引角。白 = 180° まで照らされる、
+        /// 黒 = 正面の時点で影）。ランタイムは fwd-up 面内の角度 ψ で lit ⇔ v > ψ/π。
+        /// cos 空間の 8bit は正面付近で 5° 刻みになるので、8bit なら角度線形の方が一様（0.7°）。
+        /// 距離場ブレンド・ブラーは角度線形に直してから float 域で掛ける（等値線の集合は同じ）。
+        /// </summary>
+        private static Color32[] PostProcess16V(Color32[] px, bool[] covered, int res, Settings s)
+        {
+            var fh = ExtractChannel(px, 0);
+            var fu = ExtractChannel(px, 1);
+            var fd = ExtractChannel(px, 2);
+            // 内部規約 f = cos(th)·0.5 + 0.5（1 = 正面で影 / 0 = 最後まで照らされる）→ th/π
+            for (var i = 0; i < fu.Length; i++)
+            {
+                fu[i] = Mathf.Acos(Mathf.Clamp(2f * fu[i] - 1f, -1f, 1f)) / Mathf.PI;
+                fd[i] = Mathf.Acos(Mathf.Clamp(2f * fd[i] - 1f, -1f, 1f)) / Mathf.PI;
+            }
+            DistanceFieldBlend(fh, covered, res, s.dfSpread, 0, 3);
+            DistanceFieldBlend(fu, covered, res, s.dfSpread, 1, 3);
+            DistanceFieldBlend(fd, covered, res, s.dfSpread, 2, 3);
+            BoxBlur(fh, res, s.blur);
+            BoxBlur(fu, res, s.blur);
+            BoxBlur(fd, res, s.blur);
+
+            var outPx = new Color32[px.Length];
+            for (var i = 0; i < fh.Length; i++)
+            {
+                var uh = (int)(Mathf.Clamp01(1f - fh[i]) * 65535f + 0.5f);
+                outPx[i] = new Color32((byte)(uh >> 8), (byte)(uh & 0xFF),
+                                       (byte)(Mathf.Clamp01(fu[i]) * 255f + 0.5f),
+                                       (byte)(Mathf.Clamp01(fd[i]) * 255f + 0.5f));
             }
             return outPx;
         }
